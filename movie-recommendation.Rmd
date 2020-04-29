@@ -1,0 +1,132 @@
+---
+title: "Movies Recommendation in Flixster"
+author: "Robson Teixeira, Nuno Gomes"
+date: !r Sys.Date()
+output: html_document
+params:
+  year: 2020
+  region: Europe
+  printcode: TRUE
+---
+***
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### **Introduction**  
+
+This practical assignment aims to compare the performance of diferent recommendation strategies on a data set obtained from `Flixster`, a social movie site allowing users to share movie ratings, discover new movies and meet others with similar movie taste.  
+
+#### **Problem Definition**  
+Obtain recommendations of movies for a set of users.  
+
+##### **Dataset Description**
+
+The `Flixster` dataset contains informations regarding the users like user id, gender, age, location, for how long it has been a member, contains information regarding movies as name and movie id and  contains information on the ratings given by users to movies and on which date. This datas are distributed in following files:
+
+* profile.txt
+* movie-names.txt
+* Ratings.time.txt
+
+##### **Attributes Description**
+
+**Attributes in profile.txt**
+
+Attribute   |Type        |Description
+------------|------------|------------------------------
+userid      |integer     |User unique identifier
+gender      |character   |User gender
+location    |integer     |User location identifier
+memberfor   |Date        |Date that user became member
+lastlogin   |integer     |?
+profileview |integer     |?
+age         |integer     |User age
+
+**Attributes in movie-names.txt:**
+
+Attribute   |Type        |Description
+------------|------------|------------------------------
+moviename   |character   |Movie name 
+movieid     |integer     |Movie unique identifier
+
+**Attributes in Ratings.time.txt:**
+
+Attribute   |Type        |Description
+------------|------------|-------------------------------------------------
+userid      |character   |User unique identifier
+movieid     |integer     |Movie unique identifier
+rating      |numeric     |Rating given by user to movie. Values between 0.5 and 5.0
+date        |date        |Data which user rating movie
+
+Each line in file `Ratings.time.txt` represent a user rating to movie.
+
+#### **Data Preparation**
+
+##### **Users Information**
+
+Load user informations from profile.txt file: 
+
+```{r loaduser, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(funModeling)
+
+#load user informations from profile.txt file and setting the NA strings
+df_user <- read.csv("data/profile.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE)
+```
+
+Number of observations (rows), variables (columns) and classes:
+
+```{r}
+glimpse(df_user)
+```
+
+Adjust the types of the variables and remove variables are not relevant for the context of analysis:
+
+```{r warning=FALSE}
+#Remove no relevant variables
+df_user <- select(df_user, -c(profileview, location, lastlogin))
+
+#Adjusting the correct type of variables
+df_user$gender <- as.factor(df_user$gender)
+df_user$memberfor <- as.Date(df_user$memberfor)
+df_user$age <- as.integer(df_user$age)
+
+head(df_user)
+```
+
+Getting the metrics about data types, zeros, infinite numbers, and missing values:
+
+```{r}
+df_status(df_user)
+```
+
+##### **Movies Information**
+
+Load movies information from movie-name.txt file: 
+
+```{r loadmovies, warning=FALSE, message=FALSE}
+#load movies information from movie-name.txt file and setting the NA strings
+df_movies <- read.delim("data/movie-names.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE )
+
+head(df_movies)
+```
+
+Number of observations (rows), variables (columns) and classes:
+
+```{r}
+glimpse (df_movies)
+```
+
+Getting the metrics about data types, zeros, infinite numbers, and missing values:
+
+```{r}
+df_status(df_movies)
+```
+
+
+#### **Exploratory Analysis**  
+
+
+
+
+
