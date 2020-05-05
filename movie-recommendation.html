@@ -377,22 +377,37 @@ summary {
 <div id="problem-definition" class="section level4">
 <h4><strong>Problem Definition</strong></h4>
 <p>Obtain recommendations of movies for a set of users.</p>
-<div id="dataset-description" class="section level5">
-<h5><strong>Dataset Description</strong></h5>
+</div>
+<div id="data-preparation" class="section level4">
+<h4><strong>Data Preparation</strong></h4>
 <p>The <code>Flixster</code> dataset contains informations regarding the users like user id, gender, age, location, for how long it has been a member, contains information regarding movies as name and movie id and contains information on the ratings given by users to movies and on which date. This datas are distributed in following files:</p>
 <ul>
 <li>profile.txt</li>
 <li>movie-names.txt</li>
 <li>Ratings.time.txt</li>
 </ul>
-</div>
-<div id="attributes-description" class="section level5">
-<h5><strong>Attributes Description</strong></h5>
-<p><strong>Attributes in profile.txt</strong></p>
+<div id="users-information" class="section level5">
+<h5><strong>Users Information</strong></h5>
+<p>Load user informations from profile.txt file:</p>
+<pre class="r"><code>library(tidyverse)
+
+#load user informations from profile.txt file and setting the NA strings
+df_user &lt;- read.csv(&quot;data/profile.txt&quot;, na.strings = c(&quot;N/A&quot;,&quot;&quot;), stringsAsFactors = FALSE)
+
+str(df_user)</code></pre>
+<pre><code>## &#39;data.frame&#39;:    1002796 obs. of  7 variables:
+##  $ userid     : int  981904 882359 921220 798641 952904 888 300293 805965 162134 611822 ...
+##  $ gender     : chr  &quot;Male&quot; &quot;Female&quot; &quot;Female&quot; &quot;Male&quot; ...
+##  $ location   : int  111 870 993 250 172 157 221 180 233 221 ...
+##  $ memberfor  : chr  &quot;2009-09-01 00:00:00&quot; &quot;2009-10-02 00:00:00&quot; &quot;2009-09-01 00:00:00&quot; &quot;2009-11-01 00:00:00&quot; ...
+##  $ lastlogin  : int  1 181 124 40 44 39 91 1 26 23 ...
+##  $ profileview: chr  &quot;19&quot; &quot;108&quot; NA &quot;22&quot; ...
+##  $ age        : chr  &quot;19&quot; &quot;108&quot; NA &quot;22&quot; ...</code></pre>
+<p>The data set consists of 1002796 observations spread across 7 variables. The variables <em>location</em>, <em>memberfor</em>, <em>lastlogin</em> and <em>profileview</em> are not needed for the context this analysis, so they will be removed:</p>
 <table>
 <thead>
 <tr class="header">
-<th>Attribute</th>
+<th>Variables</th>
 <th>Type</th>
 <th>Description</th>
 </tr>
@@ -421,12 +436,12 @@ summary {
 <tr class="odd">
 <td>lastlogin</td>
 <td>integer</td>
-<td>?</td>
+<td>Identifier the last login</td>
 </tr>
 <tr class="even">
 <td>profileview</td>
 <td>integer</td>
-<td>?</td>
+<td>Identifier the profile view</td>
 </tr>
 <tr class="odd">
 <td>age</td>
@@ -435,11 +450,46 @@ summary {
 </tr>
 </tbody>
 </table>
-<p><strong>Attributes in movie-names.txt:</strong></p>
+<pre class="r"><code>#Remove no relevant variables
+df_user &lt;- select(df_user, -c(profileview, location, lastlogin))
+
+# Setting &#39;gender&#39; as factors and &#39;age&#39; as integer
+df_user &lt;- df_user %&gt;% mutate(gender = as.factor(gender)) %&gt;% mutate(age = as.integer(age))
+
+summary(df_user)</code></pre>
+<pre><code>##      userid           gender        memberfor              age        
+##  Min.   :      1   Female:441074   Length:1002796     Min.   : 12.00  
+##  1st Qu.: 250830   Male  :494193   Class :character   1st Qu.: 21.00  
+##  Median : 548024   NA&#39;s  : 67529   Mode  :character   Median : 25.00  
+##  Mean   : 536170                                      Mean   : 27.39  
+##  3rd Qu.: 798766                                      3rd Qu.: 31.00  
+##  Max.   :1049511                                      Max.   :113.00  
+##                                                       NA&#39;s   :255618</code></pre>
+<p>There are a significant number of <em>NA’s</em> in variables <em>gender</em> (67529 or around 6.73% of total) and <em>age</em> (255618 or around 25.49% of total). This data will be maintained.</p>
+<p>Besides the NA’s, the variable <em>age</em> present inconsistent values. The maximum value assigned for this variable is 113 and there are around 2600 users with age over 90 years old.</p>
+<pre class="r"><code>df_user %&gt;% filter(age &gt; 90) %&gt;% count()</code></pre>
+<pre><code>## # A tibble: 1 x 1
+##       n
+##   &lt;int&gt;
+## 1  2608</code></pre>
+</div>
+<div id="movies-information" class="section level5">
+<h5><strong>Movies Information</strong></h5>
+<p>Load movies information from movie-name.txt file:</p>
+<pre class="r"><code>#load movies information from movie-name.txt file and setting the NA strings
+df_movies &lt;- read.delim(&quot;data/movie-names.txt&quot;, na.strings = c(&quot;N/A&quot;,&quot;&quot;), stringsAsFactors = FALSE )
+
+str(df_user)</code></pre>
+<pre><code>## &#39;data.frame&#39;:    1002796 obs. of  4 variables:
+##  $ userid   : int  981904 882359 921220 798641 952904 888 300293 805965 162134 611822 ...
+##  $ gender   : Factor w/ 2 levels &quot;Female&quot;,&quot;Male&quot;: 2 1 1 2 1 1 2 2 2 1 ...
+##  $ memberfor: chr  &quot;2009-09-01 00:00:00&quot; &quot;2009-10-02 00:00:00&quot; &quot;2009-09-01 00:00:00&quot; &quot;2009-11-01 00:00:00&quot; ...
+##  $ age      : int  19 108 NA 22 21 18 13 NA NA 32 ...</code></pre>
+<p>The data set consists of 66730 observations spread across 2 variables:</p>
 <table>
 <thead>
 <tr class="header">
-<th>Attribute</th>
+<th>Variable</th>
 <th>Type</th>
 <th>Description</th>
 </tr>
@@ -457,7 +507,30 @@ summary {
 </tr>
 </tbody>
 </table>
-<p><strong>Attributes in Ratings.time.txt:</strong></p>
+<p>Getting the metrics about data set:</p>
+<pre class="r"><code>summary(df_movies)</code></pre>
+<pre><code>##   moviename            movieid     
+##  Length:66730       Min.   :    1  
+##  Class :character   1st Qu.:16683  
+##  Mode  :character   Median :33366  
+##                     Mean   :33366  
+##                     3rd Qu.:50048  
+##                     Max.   :66730</code></pre>
+</div>
+<div id="ratings-information" class="section level5">
+<h5><strong>Ratings Information</strong></h5>
+<p>Load ratings information from Ratings.timed.txt file:</p>
+<pre class="r"><code>#load ratings information from Ratings.timed.txt file
+df_ratings &lt;- read.table(&quot;data/Ratings.timed.txt&quot;, header = TRUE, na.strings = c(&quot;N/A&quot;,&quot;&quot;), sep = &quot;\t&quot;,
+                         skipNul = TRUE, col.names = c(&quot;userid&quot;, &quot;movieid&quot;, &quot;rating&quot;, &quot;date&quot;))
+
+str(df_ratings)</code></pre>
+<pre><code>## &#39;data.frame&#39;:    8196077 obs. of  4 variables:
+##  $ userid : int  882359 882359 882359 882359 882359 882359 882359 882359 882359 882359 ...
+##  $ movieid: int  81 926 1349 2270 3065 3522 3583 4216 4871 4917 ...
+##  $ rating : num  1.5 1 2 1 5 0.5 0.5 0.5 3.5 0.5 ...
+##  $ date   : Factor w/ 1450 levels &quot;1941-12-07 00:00:00&quot;,..: 681 681 681 681 761 715 715 681 964 715 ...</code></pre>
+<p>The data set consists of 8196077 observations spread across 4 variables:</p>
 <table>
 <thead>
 <tr class="header">
@@ -490,79 +563,18 @@ summary {
 </tbody>
 </table>
 <p>Each line in file <code>Ratings.time.txt</code> represent a user rating to movie.</p>
-</div>
-</div>
-<div id="data-preparation" class="section level4">
-<h4><strong>Data Preparation</strong></h4>
-<div id="users-information" class="section level5">
-<h5><strong>Users Information</strong></h5>
-<p>Load user informations from profile.txt file:</p>
-<pre class="r"><code>library(tidyverse)
-library(funModeling)
+<pre class="r"><code># Setting &#39;gender&#39; as factors and &#39;age&#39; as integer
+df_ratings &lt;- df_ratings %&gt;% mutate(rating = as.factor(rating)) %&gt;% mutate(date = as.Date(date))
 
-#load user informations from profile.txt file and setting the NA strings
-df_user &lt;- read.csv(&quot;data/profile.txt&quot;, na.strings = c(&quot;N/A&quot;,&quot;&quot;), stringsAsFactors = FALSE)</code></pre>
-<p>Number of observations (rows), variables (columns) and classes:</p>
-<pre class="r"><code>glimpse(df_user)</code></pre>
-<pre><code>## Rows: 1,002,796
-## Columns: 7
-## $ userid      &lt;int&gt; 981904, 882359, 921220, 798641, 952904, 888, 300293, 80...
-## $ gender      &lt;chr&gt; &quot;Male&quot;, &quot;Female&quot;, &quot;Female&quot;, &quot;Male&quot;, &quot;Female&quot;, &quot;Female&quot;,...
-## $ location    &lt;int&gt; 111, 870, 993, 250, 172, 157, 221, 180, 233, 221, 282, ...
-## $ memberfor   &lt;chr&gt; &quot;2009-09-01 00:00:00&quot;, &quot;2009-10-02 00:00:00&quot;, &quot;2009-09-...
-## $ lastlogin   &lt;int&gt; 1, 181, 124, 40, 44, 39, 91, 1, 26, 23, 490, 1097, 272,...
-## $ profileview &lt;chr&gt; &quot;19&quot;, &quot;108&quot;, NA, &quot;22&quot;, &quot;21&quot;, &quot;18&quot;, &quot;13&quot;, NA, NA, &quot;32&quot;, ...
-## $ age         &lt;chr&gt; &quot;19&quot;, &quot;108&quot;, NA, &quot;22&quot;, &quot;21&quot;, &quot;18&quot;, &quot;13&quot;, NA, NA, &quot;32&quot;, ...</code></pre>
-<p>Adjust the types of the variables and remove variables are not relevant for the context of analysis:</p>
-<pre class="r"><code>#Remove no relevant variables
-df_user &lt;- select(df_user, -c(profileview, location, lastlogin))
-
-#Adjusting the correct type of variables
-df_user$gender &lt;- as.factor(df_user$gender)
-df_user$memberfor &lt;- as.Date(df_user$memberfor)
-df_user$age &lt;- as.integer(df_user$age)
-
-head(df_user)</code></pre>
-<pre><code>##   userid gender  memberfor age
-## 1 981904   Male 2009-09-01  19
-## 2 882359 Female 2009-10-02 108
-## 3 921220 Female 2009-09-01  NA
-## 4 798641   Male 2009-11-01  22
-## 5 952904 Female 2009-11-01  21
-## 6    888 Female 2009-10-01  18</code></pre>
-<p>Getting the metrics about data types, zeros, infinite numbers, and missing values:</p>
-<pre class="r"><code>df_status(df_user)</code></pre>
-<pre><code>##    variable q_zeros p_zeros   q_na  p_na q_inf p_inf    type  unique
-## 1    userid       0       0      0  0.00     0     0 integer 1002796
-## 2    gender       0       0  67529  6.73     0     0  factor       2
-## 3 memberfor       0       0    203  0.02     0     0    Date      36
-## 4       age       0       0 255618 25.49     0     0 integer     102</code></pre>
-</div>
-<div id="movies-information" class="section level5">
-<h5><strong>Movies Information</strong></h5>
-<p>Load movies information from movie-name.txt file:</p>
-<pre class="r"><code>#load movies information from movie-name.txt file and setting the NA strings
-df_movies &lt;- read.delim(&quot;data/movie-names.txt&quot;, na.strings = c(&quot;N/A&quot;,&quot;&quot;), stringsAsFactors = FALSE )
-
-head(df_movies)</code></pre>
-<pre><code>##                                         moviename movieid
-## 1                         $ (Dollars) (The Heist)     252
-## 2                   $5 a Day (Five Dollars a Day)     253
-## 3                                           $9.99       1
-## 4                               $windle (Swindle)     254
-## 5    &amp;#034;BBC2 Playhouse&amp;#034; Caught on a Train     255
-## 6 &amp;#034;Independent Lens&amp;#034;  Race to Execution     256</code></pre>
-<p>Number of observations (rows), variables (columns) and classes:</p>
-<pre class="r"><code>glimpse (df_movies)</code></pre>
-<pre><code>## Rows: 66,730
-## Columns: 2
-## $ moviename &lt;chr&gt; &quot;$ (Dollars) (The Heist)&quot;, &quot;$5 a Day (Five Dollars a Day)...
-## $ movieid   &lt;int&gt; 252, 253, 1, 254, 255, 256, 257, 2, 258, 3, 4, 5, 259, 26...</code></pre>
-<p>Getting the metrics about data types, zeros, infinite numbers, and missing values:</p>
-<pre class="r"><code>df_status(df_movies)</code></pre>
-<pre><code>##    variable q_zeros p_zeros q_na p_na q_inf p_inf      type unique
-## 1 moviename       0       0    0    0     0     0 character  66730
-## 2   movieid       0       0    0    0     0     0   integer  66730</code></pre>
+summary(df_ratings)</code></pre>
+<pre><code>##      userid           movieid          rating             date           
+##  Min.   :      6   Min.   :    1   5      :1591549   Min.   :1941-12-07  
+##  1st Qu.: 238071   1st Qu.:16532   4      :1589787   1st Qu.:2007-04-07  
+##  Median : 558113   Median :34422   3      :1383076   Median :2007-10-07  
+##  Mean   : 544172   Mean   :33553   3.5    :1358347   Mean   :2007-12-26  
+##  3rd Qu.: 840680   3rd Qu.:51694   4.5    : 839885   3rd Qu.:2008-09-29  
+##  Max.   :1049508   Max.   :66726   2.5    : 523576   Max.   :2009-11-17  
+##                                    (Other): 909857</code></pre>
 </div>
 </div>
 <div id="exploratory-analysis" class="section level4">
