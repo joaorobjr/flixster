@@ -1,7 +1,7 @@
 ---
 title: "Movies Recommendation in Flixster"
 author: "Robson Teixeira, Nuno Gomes"
-date: Sys.Date()
+date: "17/05/2020"
 output: html_document
 params:
   year: 2020
@@ -11,6 +11,7 @@ params:
 ***
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options(scipen=999)
 ```
 
 #### **Introduction**  
@@ -20,7 +21,7 @@ This practical assignment aims to compare the performance of diferent recommenda
 #### **Problem Definition**  
 Obtain recommendations of movies for a set of users.  
 
-#### **Data Preparation**
+#### **Data Preparation and Exploratory Analysis**
 
 The `Flixster` dataset contains informations regarding the users like user id, gender, age, location, for how long it has been a member, contains information regarding movies as name and movie id and  contains information on the ratings given by users to movies and on which date. This datas are distributed in following files:
 
@@ -64,12 +65,15 @@ df_user <- select(df_user, -c(location, memberfor, lastlogin, profileview))
 # Setting 'gender' as factors and 'age' as integer
 df_user <- df_user %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
 
-summary(df_user)
+df_status(df_user)
 ```
 
-There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). This data will be maintained.
+There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `unknown`. For the empty values into _age_ variable will be set the value `0`.
 
-Besides the NA's, the variable _age_ present inconsistent values. The maximum value assigned for this variable is 113 and there are around 2600 users with age over 90 years old.
+The variable age has a high cardinality. In order to reduce the cardi
+
+The distribution of frequency of variables _gender_ and _age_ are shown below:
+
 
 ```{r}
 df_user %>% filter(age > 90) %>% count()
@@ -131,8 +135,35 @@ df_ratings <- df_ratings %>% mutate(rating = as.factor(rating)) %>% mutate(date 
 summary(df_ratings)
 ```
 
-#### **Exploratory Analysis**  
+#### **Exploratory Analysis** 
 
+Applying strategies of exploratory data analysis, lets take a analyse the `Flister` data sets.
+
+### Profile Data Set
+
+After previous steps of data preparation where was possible to know about the data set structure removed unrelThe profile data se contains user profiling information spread across 7 variables which only three will be relevat the context of movie recommendation 
+
+The user data set contains two variables relevant for the context of movie recommendation: age and gender. The distribution of frequency these variables are shown below:
+
+```{r}
+df_user <- df_user %>% mutate(range_age = cut_width(age,10,boundary = 0))
+
+ggplot(df_user) +
+  theme_bw() +
+  geom_histogram(aes(x = range_age, fill = gender), 
+                 bins = 30, stat = "count", 
+                 position="dodge", na.rm = TRUE) +
+  labs(x = "Range of Age", y = "Total", title = "Distribuition of User Per Range of Age and Gender")
+
+```
+
+### Treatment Of Outliers
+
+```{r}
+quantile(df_user$age, probs = c(0.01, 0.99), na.rm = T)
+```
+
+All values for those aged less than 35 or more than 71 years will be considered outliers.
 
 
 
