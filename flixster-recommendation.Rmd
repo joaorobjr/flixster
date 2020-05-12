@@ -1,0 +1,174 @@
+---
+title: "Movies Recommendation in Flixster"
+author: "Robson Teixeira, Nuno Gomes"
+date: "17/05/2020"
+output:
+  html_document:
+    df_print: kable
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+geometry:
+- top=25mm
+- bottom=25mm
+- left=25mm
+- right=25mm
+- heightrounded
+highlight-style: pygments
+linkcolor: blue
+mainfont: Arial
+fontsize: 12pt
+sansfont: Verdana
+documentclass: report
+urlcolor: blue
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(tidyverse)) 
+  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(funModeling)) 
+  install.packages("funModeling", repos = "http://cran.us.r-project.org")
+if(!require(caret)) 
+  install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(Hmisc)) 
+  install.packages("Hmisc", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) 
+  install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(funModeling)
+library(caret)
+library(Hmisc)
+library(ggplot2)
+
+options(scipen=999)
+```
+# Introduction
+
+## Flixster Dataset
+
+The `Flixster` is a social movie site which allow users to share movie ratings, discover new movies and meet others with similar movie taste. The dataset generated from `Flisxter` site consist of 8196077 ratings of 48794 movies by 147612 users. The data are distributed in three files: 
+
+* `profile.txt` : contains informations regarding the users like user id, gender, age, location, for how long it has been a member
+
+* `movie-names.txt` : contains information regarding movies as name and movie id
+
+* `Ratings.time.txt` : contains information on the ratings given by users to movies and on which date
+
+```{r data_load, echo=FALSE, error=FALSE, warning=FALSE}
+users <- read.csv("data/profile.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE)
+
+ratings <- read.table("data/Ratings.timed.txt", header = TRUE, 
+                         sep = "\t", skipNul = TRUE,
+                         col.names = c("userid", "movieid", "rating", "date"))
+
+movies <- read.delim("data/movie-names.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE )
+```
+
+A summary of *movies* is given below, togeher with several first rows of dataframe:
+
+```{r movies_summ, warning=FALSE, error=FALSE, echo=FALSE}
+glimpse(movies)
+df_status(movies)
+head(movies)
+```
+
+A summary of *users* is given below, togeher with several first rows of dataframe:
+
+```{r users_summ, warning=FALSE, error=FALSE, echo=FALSE}
+glimpse(users)
+df_status(users)
+head(users)
+```
+
+The variables _gender_ and _age_ are presented as character and should be changed to factor and integer respectively.
+
+The variables _location_, _memberfor_, _lastlogin_ and _profileview_ are not needed for the context this analysis, so they should be removed.
+
+There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `unknown`. For the empty values into _age_ variable will be set the value `0`.
+
+A summary of *ratings* is given below, togeher with several first rows of dataframe:
+
+```{r ratings_summ, warning=FALSE, error=FALSE, echo=FALSE}
+glimpse(ratings)
+df_status(ratings)
+head(ratings)
+```
+
+# Methods and Analysis
+
+## Data Preparation
+
+In this section we prepare the dataset to be used in the analysis. Some steps of cleaning data are applied.
+
+```{r clean_data, warning=FALSE, message=FALSE}
+# Remove no relevant variables
+users <- select(users, -c(location, memberfor, lastlogin, profileview) )
+
+# Setting 'gender' as factors and 'age' as integer
+users <- users %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
+
+# Add column range_age into user data set
+users <- users %>% mutate(range_age = cut_width(age, 10, boundary = 0) )
+
+# replace NA values into gender with "unknown"
+users <- users %>% mutate(gender = replace(gender, is.na(gender), "unknown"))
+
+# replace NA values into age with "0"
+users <- users %>% mutate(age = replace(age, is.na(age), 0))
+
+flixster <- ratings %>% left_join(users, by = "userid") %>% left_join(movies, by = "movieid")
+
+remove(movies, users, ratings)
+
+```
+
+We split the dataset in two parts, the training set called `train_set` and the test set called `test_set` with 70% and 30% of the original dataset respectively.
+
+```{r split_dataset, warning=FALSE, error=FALSE}
+
+# 'test_set' will be 30% of dataset
+set.seed(1, sample.kind="Rounding")
+test_index <- createDataPartition(y = flixster$rating, times = 1, p = 0.3, list = FALSE)
+
+train_set <- flixster[-test_index,]
+temp <- flixster[test_index,]
+
+# Make sure userid and movieid in 'test_set' are also in 'train_set'
+test_set <- temp %>% semi_join(train_set, by = "movieid") %>% semi_join(train_set, by = "userid")
+
+# Add rows removed from 'test_set' set back into 'train_set' set
+removed <- anti_join(temp, test_set)
+train_set <- rbind(train_set, removed)
+
+rm(test_index, temp, flixster, removed)
+
+```
+
+## Data Exploration
+
+Before start building the model, we need to understand the structure of the data, the distribution of variables and the relationship of the predictors. This information will help build a better model.
+
+```{r}
+glimpse(train_set)
+```
+
+From this initial exploration, we can see that `train_set` consists of 5757622 observations spread across 8 variables. The user information are stored in userid, gender, age, range_age columns; the movie information are stored in movieid and moviename columns; the rating information are stored in rating and date columns.   
+
+Variables   |Type        |Description
+------------|------------|------------------------------
+userid      |integer     |User unique identifier
+movieid     |integer     |Movie unique identifier
+rating      |numeric     |rating movie set by user
+date        |factor      |Date that user rating movie
+gender      |factor      |User gender
+age         |integer     |Age of user
+range_age   |factor      |rande age of user
+moviename   |character   |movie name
+
+
