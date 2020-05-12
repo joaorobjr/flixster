@@ -59,9 +59,9 @@ ratings= tbl_df(ratings.raw)
 
 
 ## remove NAs
-sum(is.na(ratings.raw)) # 0
 sum(is.na(movies.raw)) # 0
 sum(is.na(profiles.raw)) # 636988 (64% of rows contain NAs)
+sum(is.na(ratings.raw)) # 0
 profiles.raw= profiles.raw %>% na.omit()
 sum(is.na(profiles.raw)) # 0
 
@@ -80,6 +80,7 @@ profilevew=      profiles$profileview
 rating=          ratings$rating
 userid.ratings=  ratings$userid
 userid.profiles= profiles$userid
+# remove profileview (same as age)
 
 
 ## distributions and outliers
@@ -98,7 +99,7 @@ boxplot(age, yaxt= 'n',
         main= "Boxplot of age")
 axis(2, las= 2)
 # remove outliers
-age.out= boxplot.stats(age, coef= 5)$out
+age.out= boxplot.stats(age, coef= 4)$out
 age.no.out.idx= !(age %in% age.out)
 age.no.out= age[age.no.out.idx]
 summary(age.no.out)
@@ -154,15 +155,18 @@ idx.nas.memberfor= which(is.na(memberfor)) # 203
 # Remove html tags from moviename
 # Create column in profiles with number of ratings per userid
 # Create column with ratings/no.views
+# Create column with ratings/movie
 # Check if movies with low number of ratings were rated by active users or not
 # Normalised version of ratings? I.e., remove the mean rating from each user.
 # Weighted arithmetic mean of ratings with number of views? Maybe the previous
 #  idea is better.
-# Popularity: has been seen, not been seen, now many times.
-# Link analysis between users and movies they have seen: age, gender, popularity
-#  per age, popularity per gender (these are extra)
+# Remove movies with low number of ratings? If yes, we have to justify our
+#  criteria. Keep those that were made by active users.
+# Popularity: has been seen, not been seen, now many times. 20 most viewed
+#  movies.
+# Popularity might be an important strategy during the Oscar's season. 
 # Recomendations: compare them with precision, recall, mean average
-#  precision... (select two)
+#  precision... (select two, confusion matrix) + ROC + AUC.
 # Sliding window: train for three months and test; train for the next three
 #  months and test, etc. I.e., the recommendations have to be updated regularly.
 #  The predictions will be the recommendations, and we will check if the users
@@ -173,4 +177,5 @@ idx.nas.memberfor= which(is.na(memberfor)) # 203
 #  etc.
 #  Note: the training data set (width of the window) has to be the same for all
 #  strategies when comparing strategies in order not to benefit any of them.
-# Popularity might be an important strategy during the Oscar's season. 
+# Link analysis between users and movies they have seen: age, gender, popularity
+#  per age, popularity per gender (these are extra)
