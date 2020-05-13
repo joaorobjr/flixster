@@ -35,9 +35,9 @@ profiles.orig= read.csv(
 
 
 # working data frames
-ratings.raw=  data.frame(ratings.orig)
 movies.raw=   data.frame(movies.orig)
 profiles.raw= data.frame(profiles.orig)
+ratings.raw=  data.frame(ratings.orig)
 
 
 # remove time tag from columns
@@ -58,17 +58,13 @@ profiles= tbl_df(profiles.raw)
 ratings= tbl_df(ratings.raw)
 
 
-## remove NAs
-sum(is.na(movies.raw)) # 0
-sum(is.na(profiles.raw)) # 636988 (64% of rows contain NAs)
-sum(is.na(ratings.raw)) # 0
-profiles.raw= profiles.raw %>% na.omit()
-sum(is.na(profiles.raw)) # 0
+## remove profileview from profiles tibble
+profiles= profiles %>% select(-"profileview")
 
 
 ## variables
 age=             profiles$age
-date=            ratings$date
+dates=           ratings$date
 gender=          profiles$gender
 lastlogin=       profiles$lastlogin
 location=        profiles$location
@@ -76,22 +72,20 @@ memberfor=       profiles$memberfor #
 movieid.movies=  movies$movieid
 movieid.ratings= ratings$movieid
 moviename=       movies$moviename
-profilevew=      profiles$profileview
 rating=          ratings$rating
 userid.ratings=  ratings$userid
 userid.profiles= profiles$userid
-# remove profileview (same as age)
 
 
 ## distributions and outliers
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
 
 ### age
-summary(age)
-nas.idx.age= which(is.na(age))
+summary(age) # min= 12; max= 113; NAs= 255618
+idx.nas.age= which(is.na(age)) # 25.5% of all age values
 age= na.omit(age)
-var(age) # 107.2413
-skewness(age) # 2.442633
+var(age) # 107.5378
+skewness(age) # 2.444335
 hist(age,
      breaks= seq(round(min(age))-1, round(max(age))+1, by= 1),
      xlab= "Age (yrs)")
@@ -102,9 +96,10 @@ axis(2, las= 2)
 age.out= boxplot.stats(age, coef= 4)$out
 age.no.out.idx= !(age %in% age.out)
 age.no.out= age[age.no.out.idx]
-summary(age.no.out)
+summary(age.no.out) # max= 71 (99.5% of values)
 hist(age.no.out,
-     xlab= expression(paste("age (yr)")),
+     breaks= seq(round(min(age.no.out))-1, round(max(age.no.out))+1, by= 1),
+     xlab= "Age (yrs)",
      main= "Histogram of age")
 boxplot(age.no.out, outline= F, yaxt= 'n')
 axis(2, las= 2)
@@ -113,40 +108,61 @@ mtext(side= 3, line= 2, at= 1, cex= 1.2,
 mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 
 
-### date
-summary(date)
-#### list all dates in movies before 2006-01-20 (founding date of Flixster)
+#### correct all wrong dates, i.e., dates before 2006-01-20 (Flixster's founding
+####  date)
 date.flixster= as.Date("2006-01-20")
-idx.dates.profiles.wrong= which(profiles$memberfor < date.flixster) # 35
-idx.dates.ratings.wrong= which(ratings$date < date.flixster) # 2996
-sum(idx.dates.profiles.wrong %in% idx.dates.ratings.wrong) # 35
-# So, all profile dates before date.flixster are in the ratings dates set.
-# Let us make these dates equal to the date when Flixster was founded.
-profiles[idx.dates.profiles.wrong, ]$memberfor= date.flixster
-summary(profiles$memberfor)
-summary(ratings$date[idx.dates.ratings.wrong])
-ratings[idx.dates.ratings.wrong, ]$date= date.flixster
-summary(ratings$date)
-
-idcs.date= which(ratings$date == min(ratings$date)) # 2
-uids= ratings$userid[idcs.date] %>% unique()
-memberfor[unique(idcs.date)]
-profiles[idcs.date, ]
-profiles[profiles$userid == uids, ]
-idx= which(profiles$userid == uids)
-profiles[idx, ]
-ratings$date[idcs.date]= profiles[idx, ]$memberfor
-summary(ratings$date)
-
 
 ### memberfor
-memberfor= profiles$memberfor
-summary(memberfor)
-idcs.membf= which(profiles$memberfor == '1900-01-01') # 57722 entries
-profiles$memberfor[idcs.membf]= ratings$date[idcs.membf]
+idx.memberfor.wrong= which(profiles$memberfor < date.flixster) # 57722
+profiles$memberfor[idx.memberfor.wrong]= date.flixster
+summary(profiles$memberfor) # min= 2006-01-20; NAs= 203
 memberfor= profiles$memberfor
 summary(memberfor)
 idx.nas.memberfor= which(is.na(memberfor)) # 203
+uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
+# fill in NAs in memberfor with earliest rating date
+# join profiles and ratings tables
+users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
+for (i in 1:nrow(users.ratings)) {
+  if (is.na(users.ratings$memberfor[i])) {
+    users.ratings$memberfor[i]= users.ratings$date[i]
+  }
+}
+#write.csv(users.ratings, file= '../data/users-ratings.csv')
+summary(users.ratings$memberfor) # min= 2006-01-20
+
+### date
+summary(dates) # min= 1941-12-07
+idx.date.wrong= which(ratings$date < date.flixster) # 2998
+sum(idx.date.wrong %in% idx.memberfor.wrong) # 35
+# So, not all rating dates before date.flixster are in the profiles dates set.
+summary(ratings$date[idx.date.wrong]) # min= 1941-12-07
+ratings$date[idx.date.wrong]= date.flixster
+summary(ratings$date) # min= 2006-01-20
+dates= ratings$date
+
+
+
+#idx.date= which(ratings$date == min(ratings$date)) # before: 2; now: 3571
+#uids= ratings$userid[idx.date] %>% unique() # 220
+#memberfor[unique(idx.date)]
+#profiles[idx.date, ]
+#profiles[profiles$userid == uids, ]
+#idx= which(profiles$userid == uids)
+#profiles[idx, ]
+#ratings$date[idx.date]= profiles[idx, ]$memberfor
+#summary(ratings$date)
+
+
+## remove NAs
+sum(is.na(movies.raw)) # 0
+sum(is.na(profiles.raw)) # 637096 (63.5% of rows contain NAs)
+sum(is.na(ratings.raw)) # 0
+#profiles.raw= profiles.raw %>% na.omit()
+#sum(is.na(profiles.raw)) # 0
+
+
+
 
 
 ## to-do
