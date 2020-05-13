@@ -16,13 +16,15 @@ ratings.orig= read.delim(
   'data/ratings.timed.txt',
   sep= "\t",
   skipNul= T, # skip NULL values
-  col.names= c("userid", "movieid", "rating", "date")
+  col.names= c("userid", "movieid", "rating", "date"),
+  stringsAsFactors = FALSE
 )
-movies.orig= read.delim('data/movie-names.txt')
+movies.orig= read.delim('data/movie-names.txt', stringsAsFactors = FALSE)
 profiles.orig= read.csv(
   'data/profile.txt',
   skipNul= T,
-  na.strings= c('N/A', '')
+  na.strings= c('N/A', ''),
+  stringsAsFactors = FALSE
 )
 
 # working data frames
@@ -81,7 +83,6 @@ rm(tot.movie.ratings)
 profiles.raw$age= as.integer(profiles.raw$age)
 profiles.raw$gender= as.factor(profiles.raw$gender)
 profiles.raw$memberfor= as.Date(profiles.raw$memberfor)
-profiles.raw$profileview= as.integer(profiles.raw$profileview)
 ratings.raw$date= as.Date(ratings.raw$date)
 
 # tibble version of data frames
@@ -93,4 +94,4 @@ ratings= tbl_df(ratings.raw)
 profiles = profiles %>%  select(-c(profileview))
 
 # Create a common set of ratings/movies/users 
-flisxter = ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
+flixster = ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
