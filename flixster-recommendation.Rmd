@@ -61,9 +61,9 @@ The `Flixster` is a social movie site which allow users to share movie ratings, 
 * `Ratings.time.txt` : contains information on the ratings given by users to movies and on which date
 
 ```{r data_load, echo=FALSE, error=FALSE, warning=FALSE}
-users <- read.csv("data/profile.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE)
+profile <- read.csv("../data/profile.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE)
 
-ratings <- read.table("data/Ratings.timed.txt", header = TRUE, 
+ratings <- read.table("../data/ratings.timed.txt", header = TRUE, 
                          sep = "\t", skipNul = TRUE,
                          col.names = c("userid", "movieid", "rating", "date"))
 
@@ -90,7 +90,7 @@ The variables _gender_ and _age_ are presented as character and should be change
 
 The variables _location_, _memberfor_, _lastlogin_ and _profileview_ are not needed for the context this analysis, so they should be removed.
 
-There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `unknown`. For the empty values into _age_ variable will be set the value `0`.
+There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `Other`. For the empty values into _age_ variable will be set the value `0`.
 
 A summary of *ratings* is given below, togeher with several first rows of dataframe:
 
@@ -154,6 +154,18 @@ rm(test_index, temp, flixster, removed)
 
 Before start building the model, we need to understand the structure of the data, the distribution of variables and the relationship of the predictors. This information will help build a better model.
 
+### Profile Data Set
+
+
+
+
+
+
+
+
+
+
+
 ```{r}
 glimpse(train_set)
 ```
@@ -170,5 +182,7 @@ gender      |factor      |User gender
 age         |integer     |Age of user
 range_age   |factor      |rande age of user
 moviename   |character   |movie name
+
+
 
 
