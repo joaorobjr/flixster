@@ -17,6 +17,7 @@ require(gridExtra)
 
 library(lubridate)
 library(caret)
+library(reshape2)
 
 options(scipen=999)
 
@@ -198,19 +199,49 @@ ratings %>% mutate(month = month(date, label = T)) %>%
   ylab("Number of Ratings") +
   theme_bw()
 
+#Popularity: Distribution Top 20 Rated Movies
+movies.ratings = left_join(ratings, movies, by = "movieid")
+movies.ratings %>% 
+  group_by(moviename) %>% 
+  summarise(count = n()) %>% 
+  top_n(20, wt = count) %>%
+  arrange(desc(count)) %>% 
+  ggplot(aes(x = reorder(moviename, count), y = count))+
+  geom_bar(stat = "identity", fill = "royalblue", colour = "blue") +
+  labs(x = "", y = "Top 20 Rated Movie", title = "Most Rated Movie") +
+  coord_flip() +
+  theme_grey(base_size = 12)
+rm(movies.ratings)
 
-profiles = select(profiles, -c(lastlogin, location))
+#Popularity: Distribution Top 20 Rated Movies
+ratings %>% 
+  group_by(userid) %>% 
+  summarise(count = n()) %>% 
+  top_n(20, wt = count) %>%
+  arrange(desc(count)) %>% 
+  ggplot(aes(x = reorder(userid, count), y = count))+
+  geom_bar(stat = "identity", fill = "royalblue", colour = "blue") +
+  labs(x = "", y = "Top 20 More Active Users", title = "Most Acive Users") +
+  coord_flip() +
+  theme_grey(base_size = 12)
 
 # Create a common set of ratings/movies/users
 flixster = ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
 
+# 2776 movies which represent 89.74% of total de ratings
+freq.movies = freq(data = flixster, input="movieid", plot = F) %>% 
+  filter(percentage > 0) #2776 Obs.
 
-# Get movies rated by less active users and with a low number of ratings.
-movies.relevants = flixster %>% filter(q_ratings_movie > 5, q_ratings_user > 10)
-glimpse(movies.relevants) #7843526 obs of 12 variables
+# 5169 users which represent 63.61% of total de ratings
+freq.user = freq(data = flixster, input="userid", plot = F) %>% 
+  filter(percentage > 0) #5169 Obs.
 
-movies.no.relevants = anti_join(flixster, movies.relevants)
-glimpse(movies.no.relevants) #352551 obs of 12 variables
+# Get movies rated by more active users and with a high number of ratings.
+flixster.sample = flixster %>% filter(q_ratings_movie > 410, q_ratings_user > 410)
+glimpse(flixster.sample) #3696800 obs of 14 variables
+
+movies.no.relevants = anti_join(flixster, flixster.sample)
+glimpse(movies.no.relevants) #4499277 obs of 14 variables
 
 # Get less active users with age = NA
 user.low.ratings = flixster %>% filter(is.na(age), q_rating_user < 10) %>%
@@ -219,21 +250,34 @@ user.low.ratings = flixster %>% filter(is.na(age), q_rating_user < 10) %>%
 
 ####------------------------------------------------------------------------------
 
+#Remove variables
+flixster.sample = select(flixster.sample, c(userid, age, gender, movieid, moviename, rating, date))
+
 # 'test_set' will be 30% of flixster datase
-set.seed(1, sample.kind="Rounding")
-test_index <- createDataPartition(y = flixster$rating, times = 1, p = 0.3, list = FALSE)
+set.seed(755)
+test_index <- createDataPartition(y = flixster.sample$rating, times = 1, p = 0.3, list = FALSE)
 
-train_set <- flixster[-test_index,]
-test_set <- flixster[test_index,]
+train_set <- flixster.sample[-test_index,] #2587758 obs
+test_set <- flixster.sample[test_index,] #1109042
 
+#To make sure we don’t include users and movies in the test set 
+#that do not appear in the training set
+test_set <- test_set %>% semi_join(train_set, by = "movieid") %>%
+  semi_join(train_set, by = "userid")
 
-#Create ratings matrix. Rows = userId, Columns = movieId
-#ratingsmat <- dcast(ratings, userid~movieid, value.var = "rating", na.rm=FALSE)
-#ratingsmat <- as.matrix(ratingmat[,-1]) #remove userIds
-#ratings.mat <- as(train_set, "realRatingMatrix")
+#Create ratings matrix. Rows = userid, Columns = movieid
+ratingmat <- dcast(train_set, userid~movieid, value.var = "rating", na.rm=FALSE)
+ratingmat <- as.matrix(ratingmat[,-1]) #remove userIds
 
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingmat <- as(ratingmat, "realRatingMatrix")
 
+#Similarity of users
+similarity_users <- similarity(ratingmat[1:100, ], method = "cosine", which = "users")
+as.matrix(similarity_users)
+image(as.matrix(similarity_users), main = "User Similarity")
 
-
-
-
+#Similarity of movies
+similarity_movies <- similarity(ratingmat[, 1:100], method = "cosine", which = "movies")
+as.matrix(similarity_movies)
+image(as.matrix(similarity_movies), main = "Movies Similarity")
