@@ -18,6 +18,8 @@ require(gridExtra)
 library(lubridate)
 library(caret)
 library(reshape2)
+library(arulesViz)
+library(arules)
 
 options(scipen=999)
 
@@ -213,7 +215,7 @@ movies.ratings %>%
   theme_grey(base_size = 12)
 rm(movies.ratings)
 
-#Popularity: Distribution Top 20 Rated Movies
+#Popularity: Distribution Top 20 Active Users
 ratings %>% 
   group_by(userid) %>% 
   summarise(count = n()) %>% 
@@ -226,7 +228,8 @@ ratings %>%
   theme_grey(base_size = 12)
 
 # Create a common set of ratings/movies/users
-flixster = ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
+flixster = ratings %>% left_join(profiles, by = "userid") %>% 
+  left_join(movies, by = "movieid")
 
 # 2776 movies which represent 89.74% of total de ratings
 freq.movies = freq(data = flixster, input="movieid", plot = F) %>% 
@@ -236,10 +239,6 @@ freq.movies = freq(data = flixster, input="movieid", plot = F) %>%
 freq.user = freq(data = flixster, input="userid", plot = F) %>% 
   filter(percentage > 0) #5169 Obs.
 
-# Get movies rated by more active users and with a high number of ratings.
-flixster.sample = flixster %>% filter(q_ratings_movie > 410, q_ratings_user > 410)
-glimpse(flixster.sample) #3696800 obs of 14 variables
-
 movies.no.relevants = anti_join(flixster, flixster.sample)
 glimpse(movies.no.relevants) #4499277 obs of 14 variables
 
@@ -247,8 +246,18 @@ glimpse(movies.no.relevants) #4499277 obs of 14 variables
 user.low.ratings = flixster %>% filter(is.na(age), q_rating_user < 10) %>%
   select(userid, q_rating_user, gender, age, memberfor) %>%
   arrange(userid)
-
 ####------------------------------------------------------------------------------
+save(flixster, file = "flixster.RData")
+save(movies, file = "movies.RData")
+save(profiles, file = "profiles.RData")
+save(ratings, file = "ratings.RData")
+####------------------------------------------------------------------------------
+
+# Get movies rated by more active users and with a high number of ratings.
+flixster.sample = flixster %>% filter(q_ratings_movie > 410, q_ratings_user > 410)
+glimpse(flixster.sample) #3696800 obs of 14 variables
+
+rm(flixster, movies, profiles, ratings)
 
 #Remove variables
 flixster.sample = select(flixster.sample, c(userid, age, gender, movieid, moviename, rating, date))
@@ -265,19 +274,51 @@ test_set <- flixster.sample[test_index,] #1109042
 test_set <- test_set %>% semi_join(train_set, by = "movieid") %>%
   semi_join(train_set, by = "userid")
 
-#Create ratings matrix. Rows = userid, Columns = movieid
-ratingmat <- dcast(train_set, userid~movieid, value.var = "rating", na.rm=FALSE)
-ratingmat <- as.matrix(ratingmat[,-1]) #remove userIds
 
-#Convert rating matrix into a recommenderlab sparse matrix
-ratingmat <- as(ratingmat, "realRatingMatrix")
+save(train_set, file = "train-set.RData")
+save(test_set, file = "test-set.RData")
+
+### RECOMMENDATION  (Binary Approach)-------------------------------------
+
+algorithms <- list(
+  "association rules" = list(name  = "AR",
+                             param = list(supp = 0.01, conf = 0.01)),
+  "popular items"     = list(name  = "POPULAR", param = NULL),
+  "item-based CF"     = list(name  = "IBCF", param = list(k = 30)),
+  "user-based CF"     = list(name  = "UBCF", 
+                             param = list(method = "Cosine", nn = 5))
+)
+
+#Create ratings matrix. Rows = userid, Columns = movieid
+rm <- dcast(train_set, userid~movieid, value.var = "rating", na.rm=FALSE)
+rm <- as.matrix(rm) #remove userIds
+rm <- as(rm, "realRatingMatrix")
 
 #Similarity of users
-similarity_users <- similarity(ratingmat[1:100, ], method = "cosine", which = "users")
+similarity_users <- similarity(rm[1:100, ], method = "cosine", which = "users")
 as.matrix(similarity_users)
 image(as.matrix(similarity_users), main = "User Similarity")
 
 #Similarity of movies
-similarity_movies <- similarity(ratingmat[, 1:100], method = "cosine", which = "movies")
-as.matrix(similarity_movies)
-image(as.matrix(similarity_movies), main = "Movies Similarity")
+#similarity_movies <- similarity(ratingmat[, 1:10], method = "cosine", which = "movies")
+#as.matrix(similarity_movies)
+#image(as.matrix(similarity_movies), main = "Movies Similarity")
+
+rmb <- binarize(rm, minRating = 0.5)
+
+rec.ar = Recommender(rmb, method = "AR")
+getModel(rec.ar)
+
+rec.ubcf = Recommender(rmb, method = "UBCF",
+                       param=list(method="Cosine", nn=5))
+getModel(rec.ubcf)
+
+rec.ibcf = Recommender(rmb, method = "IBCF", 
+                       param=list(method="Jaccard", k=30))
+getModel(rec.ibcf)
+
+rec.pop = Recommender(rmb, method = "POPULAR")
+getModel(rec.pop)
+
+
+
