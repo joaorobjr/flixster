@@ -1,3 +1,4 @@
+# HEADER ------------------------------------------------------------------
 ###
 ## Practical Assignment of Advanced Topics in Data Science
 ## By Nuno Gomes (up199300242) and João Robson Júnior (up201)
@@ -80,7 +81,7 @@ memberfor= profiles$memberfor #
 movieid.movies= movies$movieid
 movieid.ratings= ratings$movieid
 moviename= movies$moviename
-ratings= ratings$rating
+rating= ratings$rating
 userid.ratings= ratings$userid
 userid.profiles= profiles$userid
 
@@ -295,17 +296,17 @@ hist(movieid.ratings,
 ##  others. In particular, there is a movie with ID greater than 60000 with
 ##  around 35000 ratings.
 
-# ratings -----------------------------------------------------------------
+# rating ------------------------------------------------------------------
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
 
-summary(ratings) # min= 0.5; max= 5.0
-var(ratings) # 1.192404
-skewness(ratings) # -0.7054742
-hist(ratings,
-  breaks= seq(round(min(ratings)) -0.5, round(max(ratings)) +0.5, by= 0.5),
+summary(rating) # min= 0.5; max= 5.0
+var(rating) # 1.192404
+skewness(rating) # -0.7054742
+hist(rating,
+  breaks= seq(round(min(rating)) -0.5, round(max(rating)) +0.5, by= 0.5),
   xlab= "Ratings"
 )
-boxplot(ratings,
+boxplot(rating,
   yaxt= "n",
   main= "Boxplot of ratings"
 )
@@ -324,6 +325,7 @@ axis(2, las= 2)
 
 
 
+# TESTING (to remove) -----------------------------------------------------
 # idx.date= which(ratings$date == min(ratings$date)) # before: 2; now: 3571
 # uids= ratings$userid[idx.date] %>% unique() # 220
 # memberfor[unique(idx.date)]
@@ -345,11 +347,13 @@ sum(is.na(ratings.raw)) # 0
 
 
 
-
-## to-do
-# Avoid to remove users rich in information (if they have a lot of ratings)
-# Create a common set of ratings/movies/users
-# Remove html tags from moviename
+# TO-DO -------------------------------------------------------------------
+# [ ] Distribution of ratings per year
+# [ ] Films with more ratings (top 10 or top 20)
+# [ ] Number of ratings per user
+# [ ] Avoid to remove users rich in information (if they have a lot of ratings)
+# [ ] Create a common set of ratings/movies/users
+# [ ] Remove html tags from moviename
 # Create column in profiles with number of ratings per userid
 # Create column with ratings/no.views
 # Create column with ratings/movie
@@ -376,3 +380,5 @@ sum(is.na(ratings.raw)) # 0
 #  strategies when comparing strategies in order not to benefit any of them.
 # Link analysis between users and movies they have seen: age, gender, popularity
 #  per age, popularity per gender (these are extra)
+
+

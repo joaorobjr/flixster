@@ -1,26 +1,35 @@
 ---
 title: "Movies Recommendation in Flixster"
-author: "Robson Teixeira, Nuno Gomes"
+author: "Robson Teixeira and Nuno Gomes"
 date: "17/05/2020"
 output:
-  html_document:
-    df_print: kable
+  html_document: 
+    df_print: tibble
+    fig_caption: yes
     number_sections: yes
     theme: cerulean
     toc: yes
-    toc_depth: 3
     toc_float: yes
+  pdf_document:
+    citation_package: natbib
+    df_print: tibble
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 5
+    fig_width: 7
+    number_sections: yes
+    toc: yes
 geometry:
 - top=25mm
 - bottom=25mm
 - left=25mm
-- right=25mm
+- right=20mm
 - heightrounded
 highlight-style: pygments
 linkcolor: blue
-mainfont: Arial
+mainfont: Source Variable Pro
 fontsize: 12pt
-sansfont: Verdana
+sansfont: Source Sans Pro
 documentclass: report
 urlcolor: blue
 ---
@@ -48,7 +57,25 @@ library(ggplot2)
 
 options(scipen=999)
 ```
+# Abstract
+We report on the methodology we adopted to create a recommendation system for films using the Flixster data set, and on the results we obtained.
+Our model is based on the assumption that if a group of users had liked the same films in the past, they will like similar movies in the future.
+Hence, if two users have a similar rating history (movies and ratings) and one of them has recently enjoyed a film that the other has not seen yet, then that movie is proposed to the latter.
+The recommendation system uniquely takes into account the user ratings, and does not consider the characteristics of the films.
+ADD MAIN RESULTS HERE.
+
 # Introduction
+**Recommender** or **recommendation** systems are a branch of *Web usage mining* that aim at predicting the "preferences" or the "rating" a user would give to an item.
+They are widely used on the Web, mainly in online streaming services, such as YouTube, Amazon, or Netflix (just to name a few), and e-commerce applications (eBay, Amazon, OLX, *etc.*), in order to recommend products and services to the users.
+They serve three important functions: (*i*) to increase the profit of companies, (*ii*) to help users to select specific products within the available offer, by giving them personalised recommendations based on previous interactions, and (*iii*) to predict the rating for a new item.
+Companies struggle for customer loyalty on a daily basis, and while doing so, they invest on recommender systems that try to increase the likelihood of purchase, by analysing customers' preferences and past interactions.
+
+The importance of recommender systems on the success of businesses and on company-customer relationships can be inferred from the one million dollar prize that Netflix offered in 2006 to the person or team that could improve their recommendation system by at least 10%.^[https://www.netflixprize.com/]
+The success of companies such as Amazon or platforms like Youtube lies partly in the recommendation and marketing strategies, based on the user preferences.
+
+During this project, we created a film recommendation system using the Flixster data set, while applying the knowledge acquired in the course of Advanced Topics in Data Science/Data Mining II over the second semestre of the Masters in Data Science.
+
+This report is organised as follows: 
 
 ## Flixster Dataset
 
@@ -67,7 +94,7 @@ ratings <- read.table("../data/ratings.timed.txt", header = TRUE,
                          sep = "\t", skipNul = TRUE,
                          col.names = c("userid", "movieid", "rating", "date"))
 
-movies <- read.delim("data/movie-names.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE )
+movies <- read.delim("../data/movie-names.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE )
 ```
 
 A summary of *movies* is given below, togeher with several first rows of dataframe:
@@ -81,6 +108,7 @@ head(movies)
 A summary of *users* is given below, togeher with several first rows of dataframe:
 
 ```{r users_summ, warning=FALSE, error=FALSE, echo=FALSE}
+users= profile
 glimpse(users)
 df_status(users)
 head(users)
