@@ -14,12 +14,9 @@ require(tidyverse)
 require(tm)
 require(funModeling)
 require(gridExtra)
-
-library(lubridate)
-library(caret)
-library(reshape2)
-library(arulesViz)
-library(arules)
+require(reshape2)
+require(lubridate)
+require(caret)
 
 options(scipen=999)
 
@@ -257,10 +254,10 @@ save(ratings, file = "ratings.RData")
 flixster.sample = flixster %>% filter(q_ratings_movie > 410, q_ratings_user > 410)
 glimpse(flixster.sample) #3696800 obs of 14 variables
 
-rm(flixster, movies, profiles, ratings)
+rm(flixster)
 
 #Remove variables
-flixster.sample = select(flixster.sample, c(userid, age, gender, movieid, moviename, rating, date))
+flixster.sample = select(flixster.sample, c(userid, gender, movieid, moviename, rating, date))
 
 # 'test_set' will be 30% of flixster datase
 set.seed(755)
@@ -280,45 +277,104 @@ save(test_set, file = "test-set.RData")
 
 ### RECOMMENDATION  (Binary Approach)-------------------------------------
 
-algorithms <- list(
-  "association rules" = list(name  = "AR",
-                             param = list(supp = 0.01, conf = 0.01)),
-  "popular items"     = list(name  = "POPULAR", param = NULL),
-  "item-based CF"     = list(name  = "IBCF", param = list(k = 30)),
-  "user-based CF"     = list(name  = "UBCF", 
-                             param = list(method = "Cosine", nn = 5))
-)
+rm(flixster.sample, test_index)
+
+head(train_set)
+trainAR<-train_set[,-c(2,3,5,6,7)]
+head(trainAR)
+table(trainAR$movieid)
+dat <- table(trainAR$userid, trainAR$movieid)
+dm <- dist(dat)
 
 #Create ratings matrix. Rows = userid, Columns = movieid
 rm <- dcast(train_set, userid~movieid, value.var = "rating", na.rm=FALSE)
-rm <- as.matrix(rm) #remove userIds
+rm <- as.matrix(rm)
 rm <- as(rm, "realRatingMatrix")
+rmb <- binarize(rm, minRating = 0.5)
 
-#Similarity of users
-similarity_users <- similarity(rm[1:100, ], method = "cosine", which = "users")
-as.matrix(similarity_users)
-image(as.matrix(similarity_users), main = "User Similarity")
+testrm <- dcast(test_set, userid~movieid, value.var = "rating", na.rm=FALSE)
+testrm <- as.matrix(testrm)
+testrm <- as(testrm, "realRatingMatrix")
+testrmb <- binarize(rm, minRating = 0.5)
+
+# #Similarity of users
+# similarity_users <- similarity(rm[1:100, ], method = "cosine", which = "users")
+# as.matrix(similarity_users)
+# image(as.matrix(similarity_users), main = "User Similarity")
 
 #Similarity of movies
 #similarity_movies <- similarity(ratingmat[, 1:10], method = "cosine", which = "movies")
 #as.matrix(similarity_movies)
 #image(as.matrix(similarity_movies), main = "Movies Similarity")
 
-rmb <- binarize(rm, minRating = 0.5)
+binary.models <- recommenderRegistry$get_entries(dataType ="binaryRatingMatrix")
+binary.models$AR_binaryRatingMatrix$parameters
+binary.models$IBCF_binaryRatingMatrix$parameters
+binary.models$UBCF_binaryRatingMatrix$parameters
+binary.models$POPULAR_binaryRatingMatrix$parameters
 
-rec.ar = Recommender(rmb, method = "AR")
-getModel(rec.ar)
+# ASSOCIATION RULES -------------------------------------------------------------------
+# trainsetAR = train_set[, -c(2,3,5,6,7)]
+# trainsetAR = dcast(test_set, userid~movieid, value.var="rating", na.rm=FALSE)
+# bm = as(as.matrix(trainsetAR), "realRatingMatrix")
+# bm = binarize(bm, minRating = 0.5)
+# modelAR = Recommender(bm, method = "AR")
+# getModel(modelAR)
+# rules <- getModel(modelAR)$rule_base
+# inspect(rules)
+# 
+# user.id = test_set$userid[1]
+# users = as.matrix(test_set[test_set$userid == user.id,])
+# users = as(users, "realRatingMatrix")
+# users = binarize(users, minRating = 0.5)
+# predicted.ar = predict(rec.ar, users, 2)
 
-rec.ubcf = Recommender(rmb, method = "UBCF",
-                       param=list(method="Cosine", nn=5))
-getModel(rec.ubcf)
+# UB COLLABORATIVE FILTERING ---------------------------------------------------
 
-rec.ibcf = Recommender(rmb, method = "IBCF", 
-                       param=list(method="Jaccard", k=30))
+trainUBCF = train_set[, -c(2,3,5,7)]
+trainUBCF = dcast(trainUBCF, userid~movieid, value.var="rating", na.rm=TRUE)
+bm = as(as.matrix(trainsetAR), "realRatingMatrix")
+bm = binarize(bm, minRating = 0.5)
+
+
+
+modelUBCF = Recommender(rmb, method = "UBCF")
+getModel(modelUBCF)
+
+user.id = test_set$userid[1]
+users = as.matrix(test_set[test_set$userid == user.id,])
+users = as(users, "realRatingMatrix")
+users = binarize(users, minRating = 0.5)
+
+recUBCF = predict(modelUBCF, test_set, 2)
+
+
+
+
+
+rec.ibcf = Recommender(rmb, method = "IBCF")
 getModel(rec.ibcf)
 
 rec.pop = Recommender(rmb, method = "POPULAR")
 getModel(rec.pop)
 
+save(rec.ar, rec.ibcf, rec.pop, rec.ubcf, rm, rmb, train_set, test_set, file = "Scenario-SmallSample.RData")
 
+rec.ubcf = Recommender(rmb, method = "UBCF", param)
+getModel(rec.ubcf)
 
+rec.ibcf = Recommender(rmb, method = "IBCF")
+getModel(rec.ibcf)
+
+#IBCF Analisys
+modelIBCF <- getModel(rec.ibcf)
+class(modelIBCF$sim) # this contains a similarity matrix
+dim(modelIBCF$sim)
+
+rowsums <- rowSums(modelIBCF$sim > 0)
+table(rowsums)
+colsums <- colSums(modelIBCF$sim > 0)
+qplot(colsums) + stat_bin(binwidth = 1) + ggtitle("Distribution of the column count")
+
+top.items <- 40
+image(modelIBCF$sim[1:top.items, 1:top.items], main = paste("Heatmap of the first", top.items, "rows and columns"))
