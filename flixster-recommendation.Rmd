@@ -4,15 +4,6 @@ subtitle: "Practical assignment of Advanced Topics in Data Science/Data Mining I
 author: "By Robson Teixeira and Nuno Gomes"
 date: "M:DS -- FCUP, 17/05/2020"
 output:
-  bookdown::pdf_document2:
-    #citation_package: natbib
-    df_print: tibble
-    fig_caption: yes
-    fig_crop: no
-    fig_height: 5
-    fig_width: 7
-    number_sections: yes
-    toc: yes
   bookdown::html_document2:
     code_folding: "hide"
     df_print: tibble
@@ -23,6 +14,15 @@ output:
     theme: cerulean
     toc: yes
     toc_float: yes
+  bookdown::pdf_document2:
+    #citation_package: natbib
+    df_print: tibble
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 5
+    fig_width: 7
+    number_sections: yes
+    toc: yes
 geometry:
 - top=25mm
 - bottom=25mm
@@ -205,6 +205,18 @@ userid      |integer     |User unique identifier        |ratings
 The creation of a recomendation system requires the identification of the most important features involved in the prediction of the ratings.
 With that goal in mind, we cleaned the data (section \@ref(data-cleaning)) and analysed statistically the variables (section \@ref(eda)) to understand them and the relationships between them.
 
+Since **R** does not have a base function to calculate the mode, we created one, the `getmode` function.
+It was useful in our statistical analysis and in the imputation of values in some of the variables.
+
+```{r eval= F}
+# compute the mode
+getmode= function(arr) {
+  uniq.vals= unique(arr)
+  uniq.vals[which.max(tabulate(match(arr, uniq.vals)))]
+}
+
+```
+
 ```{r}
 movies.raw= data.frame(movies.orig)
 profiles.raw= data.frame(profiles.orig)
@@ -260,6 +272,30 @@ ratings
 ```
 
 ## Statistical exploration of the variables {#eda}
+All features contained in the three tibbles (`movies`, `profiles`, and `ratings`) were saved in standalone variables, to facilitate their statistical analysis.
+Those variables are described in tab. \@ref(tab:variables-standalone).
+It is worth noting that during the creation of the `gender` variable, all NAs were assigned the category "Other".
+
+Table: (\#tab:variables-standalone) List of standalone variables created from the original features present in the three files from the Flixster data set, after type correction and preliminary data engineering.
+
+Variable        |Type        |Description                   |Tibble
+----------------|------------|------------------------------|------
+age             |integer     |Age of user                   |profiles
+dates           |date        |Date in which user rated movie|ratings
+gender          |factor      |Gender of the user (*Female*, *Male*, and *Other*) |profiles
+lastlogin       |integer     |Last login numerical tag      |profiles
+location        |integer     |Location identifier of user   |profiles
+memberfor       |date        |Member since date             |profiles
+movieid.movies  |integer     |Movie unique identifier       |movies
+movieid.ratings |integer     |Movie unique identifier       |ratings
+moviename       |character   |movie name                    |movies
+profileview     |integer     |Numerical tag of the user     |profiles
+rating          |double      |Rating of movie by user       |ratings
+userid.profiles |integer     |User unique identifier        |profiles
+userid.ratings  |integer     |User unique identifier        |ratings
+
+
+
 ```{r}
 age= profiles$age
 dates= ratings$date
@@ -271,8 +307,8 @@ movieid.movies= movies$movieid
 movieid.ratings= ratings$movieid
 moviename= movies$moviename
 rating= ratings$rating
-userid.ratings= ratings$userid
 userid.profiles= profiles$userid
+userid.ratings= ratings$userid
 ```
 
 Understanding the structure of the data, the distribution of the variables, and the relationships between them is fundamental to build a solid model.
@@ -285,44 +321,73 @@ The variable also contains more than $\num{255000}$ NAs, corresponding to approx
 ```{r}
 summary(age) # min= 12; max= 113; NAs= 255618
 idx.nas.age= which(is.na(age)) # 25.5% of all age values
-age= na.omit(age)
 ```
+
 Removing the NAs, we obtain a variance of $\num{107.5}$ years.
 ```{r}
-var(age) # 107.5378
+age.clean= na.omit(age)
+var(age.clean) # 107.5378
 ```
 The skeweness is positive, indicating a right-skewed distribution.
 ```{r}
-skewness(age) # 2.444335
+skewness(age.clean) # 2.444335
 ```
 
 We plotted the histogram and the boxplot of `ages` (fig. \@ref(fig:age-outliers)).
-```{r age-outliers, fig.cap= "\\label{fig:age-outliers}histogram (*left*) and boxplot (*right*) of the `age` variable. The distribution is right skewed and exihibits several outliers."}
+```{r age-outliers, fig.cap= "\\label{fig:age-outliers}Histogram (*left*) and boxplot (*right*) of the `age` variable. The distribution is right skewed and exihibits several outliers."}
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
-hist(age,
-  breaks= seq(round(min(age)) - 1, round(max(age)) + 1, by= 1),
+hist(age.clean,
+  breaks= seq(round(min(age.clean)) - 1, round(max(age.clean)) + 1, by= 1),
   xlab= "Age (yrs)"
 )
-boxplot(age,
+boxplot(age.clean,
   yaxt= "n",
   main= "Boxplot of age"
 )
 axis(2, las= 2)
 ```
 
-Most of the individuals are between 18 and 24 years old.
+Most of the individuals are between 18 and 30 years old, corresponding to more than $\num{250000}$ of Flixster's users.
 The histogram highlights the right skeweness of the distribution.
 This is expected, since Flixster's customers were typically young.
 
-The set of ages above 71 years old corresponded to $0.5\,\%$ of all ages and, thus, they could be safelly considered as outliers.
+We also plotted the histogram of `age` as a function of `gender` (fig. \@ref(fig:histo-age-gender)).
+The vertical dashed lines represent respectively the first and 99.5^{th} percentile of the distribution of ages.
+
+```{r histo-age-gender, fig.align= "center", fig.cap= "\\label{histo-age-gender}Histogram of the age of users as a function of their gender. The majority of Flixster users are women and men, with the first and 99.5^{th} percentile between 14 and 70 years old."}
+percentile.age= quantile(age, c(0.01, 0.9951), na.rm= T)
+dfp.age=data.frame(value= percentile.age, percentile= c("1st", "99.5th"))
+ggplot(data.frame(age= age, gender= gender)) +
+  geom_histogram(
+    aes(x= age, fill= gender),
+    stat= "count",
+    position= "dodge"
+  ) +
+  labs(x= "Age (yrs)", y= "Total", 
+       title= "Distribuition of users per age and gender"#, 
+#       subtitle= "(right skewed distribution)"
+  ) +
+  geom_vline(
+    data= dfp.age,
+    aes(xintercept= value, colour= percentile),
+    show.legend= T,
+    linetype= "dashed") +
+  theme_bw()
+rm(percentile.age, dfp.age)
+```
+
+Ages bellow 14 and above 70 would be safe to be considered as outliers.
+However, we only removed users with ages above 70 years old, the set of which corresponded to $0.5\,\%$ of all ages.
 The histogram and boxplot of `ages` without outliers is represented in fig. \@ref(fig:age-no-outliers).
+
 ```{r}
-age.out= boxplot.stats(age, coef= 4)$out
-age.no.out.idx= !(age %in% age.out)
-age.no.out= age[age.no.out.idx]
+age.out= boxplot.stats(age.clean, coef= 3.9)$out
+age.no.out.idx= !(age.clean %in% age.out)
+age.no.out= age.clean[age.no.out.idx]
 summary(age.no.out) # max= 71 (99.5% of values)
 ```
-```{r age-no-outliers, fig.cap= "\\label{fig:age-no-outliers}histogram (*left*) and boxplot (*right*) of `ages` after removing the outliers."}
+
+```{r age-no-outliers, fig.cap= "\\label{age-no-outliers}Histogram (*left*) and boxplot (*right*) of `ages` after removing the outliers."}
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
 hist(age.no.out,
   breaks= seq(round(min(age.no.out)) - 1, round(max(age.no.out)) + 1, by= 1),
@@ -337,42 +402,311 @@ mtext(
 )
 mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ```
-More than $\num{40000}$ Flixster's users were approximately 25 years old.
+
+### Dates and Memberfor
+We detected several incorrect dates in the data set, both in the `date` and in `memberfor`, respectively from the `ratings` and the `profiles` tibbles.
+Those dates were either before the founding of Flixster (2006/01/20) or NA values---we detected dates as early as 1900/01/01 for `memberfor` and 1941/12/07 for `dates`, and 203 NAs in `memberfor` (no NAs in `dates`).
+Regarding the NAs in `memberfor`, we simply removed the corresponding instances, since, on the one hand the total number of NAs was small, corresponding to $0.02\,\%$ of the total number of values, and, on the other hand, there was no way of estimating a reasonable date.
+For the remainder of the wrong dates, we performed imputation, according to the following rules: (*i*) we made `memberfor` equal to the minimum rating date every time the former was after the latter, *i.e.*, when the membership date was after the first rating, and (*ii*) we replaced all dates before 2006/01/20 by Fixster's founding date.
+We ended up with two arrays with dates between 2006/01/20 and 2009/11/17 (`dates` case) and 2009/12/03 (`memberfor` case), with no NAs.
+
+```{r}
+date.flixster= as.Date("2006-01-20")
+idx.memberfor.wrong= which(profiles$memberfor < date.flixster) # 57722
+profiles$memberfor[idx.memberfor.wrong]= date.flixster
+memberfor= profiles$memberfor
+idx.nas.memberfor= which(is.na(memberfor)) # 203
+uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
+```
 
 
+```{r eval= F}
+# fill in NAs in memberfor with earliest rating date
+# join profiles and ratings tables
+users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
+for (i in 1:nrow(users.ratings)) {
+  if (is.na(users.ratings$memberfor[i])) {
+    users.ratings$memberfor[i]= users.ratings$date[i]
+  }
+}
+write.csv(users.ratings, file= '../data/users-ratings.csv')
+users.ratings= read.csv("../data/users-ratings.csv")
+memberfor= as.Date(users.ratings$memberfor)
+summary(memberfor)
+write.csv(memberfor, "../data/memberfor.csv")
+```
+
+```{r}
+tmp= read.csv("../data/memberfor.csv")
+memberfor= as.Date(tmp$x)
+```
+
+```{r}
+idx.date.wrong= which(ratings$date < date.flixster) # 2998
+# sum(idx.date.wrong %in% idx.memberfor.wrong) # 35
+ratings$date[idx.date.wrong]= date.flixster
+dates= ratings$date
+```
 
 
+### Gender
+The proportions of the three gender categories previously identified (*Female*, *Male*, and *Other*) were highlighted in a pie chart (see fig. \@ref(fig:pie-chart)).
+The set of Flixster's users was comprised of $49\,\%$ of males, $44\,\%$ of females, and $7\,\%$ of other/unidentified genders.
 
-The variables _location_, _memberfor_, _lastlogin_ and _profileview_ are not needed for the context this analysis, so they should be removed.
-
-There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `Other`. For the empty values into _age_ variable will be set the value `0`.
-
-
-```{r clean_data, warning= F, message= F}
-movies= movies.orig
-profiles= profiles.orig
-ratings= ratings.orig
-
-## Remove no relevant variables
-profiles <- select(profiles, -c(location, memberfor, lastlogin, profileview) )
-
-## Setting 'gender' as factors and 'age' as integer
-profiles <- profiles %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
-
-## Add column range_age into user data set
-profiles <- profiles %>% mutate(range_age = cut_width(age, 10, boundary = 0) )
-
-## replace NA values into gender with "unknown"
-profiles <- profiles %>% mutate(gender = replace(gender, is.na(gender), "unknown"))
-
-## replace NA values into age with "0"
-profiles <- profiles %>% mutate(age = replace(age, is.na(age), 0))
-
-flixster <- ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
-
-remove(movies, profiles, ratings)
+```{r pie-chart, fig.align= "center", fig.height= 4, fig.width= 4, fig.cap= "\\label{pie-chart}Gender spread among Flixster users."}
+n.gender= length(gender)
+gender.woman= gender[gender == "Female"]
+n.woman= length(gender.woman)
+gender.woman.pct= round(n.woman / n.gender * 100)
+gender.man= gender[gender == "Male"]
+n.man= length(gender.man)
+gender.man.pct= round(n.man / n.gender * 100)
+gender.other= gender[gender == "Other"]
+n.other= length(gender.other)
+gender.other.pct= round(n.other / n.gender * 100)
+gender.labels= c(
+  paste('Women:', gender.woman.pct),
+  paste('Men:',   gender.man.pct),
+  paste('Other:', gender.other.pct))
+gender.labels= paste0(gender.labels, '%')
+gender.colours= c("#FA9FB5", "#74A9CF", "#2ECC71")
+par(mfrow= c(1, 1), oma= c(0, 0, 0, 0))
+pie3D(c(n.woman, n.man, n.other), theta= pi/3,
+      labels= gender.labels, labelcex= 1.5,
+      col= gender.colours,
+      start= pi/4, explode= 0.08)
+mtext("Gender spread", side= 3, line= -4, outer= T, cex= 2)
 
 ```
+
+### Last login
+Due to the lack of information about the data set, we do not know exactly what this variable represents.
+We suspect, however, it corresponds to the total number of logins during a certain period of time (during the previous month or year) per user.
+Assuming that is the case, most of the users had logged in to Flixster during that period of time between approximately 4 to 30 times.
+The minimum of `lastlogin` is 0, meaning a user never logged in, and the
+maximum is $\num{177278}$.
+There are $\num{57925}$ NAs, corresponding to $5.7\,\%$ of all values.
+The distribution is strongly right skewed, with several outliers lying far away from the median, *i.e.*, corresponding to number of occurrences several orders of magnitude above the median.
+We removed the outliers by wiping out all values with frequencies above 46 (that kept $99\,\%$) of all the values.
+The histogram and boxplot of the distribution with and witout outliers are represented in figs. \@ref(fig:lastlogin-out) and \@ref(fig:lastlogin-no-out), respectively.
+
+```{r results= "hide"}
+idx.nas.lastlogin= which(is.na(lastlogin)) # 5.7% of all values
+lastlogin= na.omit(lastlogin)
+var(lastlogin) # 102829.2
+skewness(lastlogin) # 217.3447
+```
+
+```{r lastlogin-out, fig.cap= "\\label{lastlogin-out}Histogram (*left*) and boxplot (*right*) of the variable `lastlogin`. Some outliers lie very far away from the median."}
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(lastlogin,
+  breaks= seq(round(min(lastlogin)) - 1, round(max(lastlogin)) + 1),
+  xlab= "Last login"
+)
+boxplot(lastlogin,
+  yaxt= "n",
+  main= "Boxplot of lastlogin"
+)
+axis(2, las= 2)
+```
+```{r lastlogin-no-out, fig.cap= "\\label{lastlogin-no-out}Histogram (*left*) and boxplot (*right*) of the variable `lastlogin` after removing the outliers."}
+### remove outliers
+lastlogin.out= boxplot.stats(lastlogin, coef= 20)$out
+lastlogin.no.out.idx= !(lastlogin %in% lastlogin.out)
+lastlogin.no.out= lastlogin[lastlogin.no.out.idx]
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(lastlogin.no.out,
+  breaks= seq(round(min(lastlogin.no.out)) - 1, round(max(lastlogin.no.out))),
+  xlab= "Last login",
+  main= "Histogram of lastlogin"
+)
+boxplot(lastlogin.no.out, outline= F, yaxt= "n")
+axis(2, las= 2)
+mtext(
+  side= 3, line= 2, at= 1, cex= 1.2,
+  expression(paste("Boxplot of lastlogin"))
+)
+mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
+
+```
+
+Since this variable did not seem to be relevant for any of our analyses, we decided to discard it.
+
+### Location
+This variable presented several NAs, corresponding to $0.02\,\%$ of all values.
+The histogram (\@ref(fig:loca-out)) is characterised by a sharp spike at the value 0, with a difference of at least one order of magnitude to the remainder of the local maxima.
+This might indicate that 0 corresponds to the most typical region the users belong to, or might be just an indentifier of all users for whom the location is unknown (an outlier, in that case).
+Since there is no information about the variables and `location` is a feature of integers, we decided to imput all NAs with the mode (the value 0).
+After the imputation, `location` varied between 0 and $\num{1617}$.
+
+```{r}
+idx.nas.location= which(is.na(location)) # ~0.02% of all values
+loca= na.omit(location)
+cat("Variance of `location`:", var(loca)) # 81802.41
+cat("Skewness of `location`:", skewness(loca)) # 1.036804
+## remove NAs
+location[idx.nas.location]= 0
+```
+
+```{r loca-out, fig.cap= "\\label{loca-out}Histogram (*left*) and boxplot (*right*) of the `location` variable."}
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(loca,
+  breaks= seq(round(min(loca)) - 1, round(max(loca)) + 1),
+  xlab= "Location"
+)
+boxplot(loca,
+  yaxt= "n",
+  main= "Boxplot of location"
+)
+axis(2, las= 2)
+```
+
+We then looked to the distribution of the `location` values without outliers.
+Zero and all values above $\num{1200}$ were placed in this category---the remainder of the set corresponded to approximatelly $99\,\%$ of the original values.
+The new histogram and boxplot are represented in fig. \@ref(fig:loca-no-out).
+
+```{r include= F}
+remove= c(0)
+location= location[!(location %in% remove)]
+location.out= boxplot.stats(location)$out
+location.no.out.idx= !(location %in% location.out)
+location.no.out= location[location.no.out.idx]
+```
+
+```{r loca-no-out, fig.cap= "\\label{loca-no-out}Histogram (*left*) and boxplot (*right*) of the `location` variable, after the removal of the outliers."}
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(location.no.out,
+  breaks= seq(round(min(location.no.out)) - 1, round(max(location.no.out))),
+  xlab= "Location",
+  main= "Histogram of location"
+)
+boxplot(location.no.out, outline= F, yaxt= "n")
+axis(2, las= 2)
+mtext(
+  side= 3, line= 2, at= 1, cex= 1.2,
+  expression(paste("Boxplot of location"))
+)
+mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
+```
+
+With outliers removed, we verify that most of the values are between 180 and 300.
+However, simillarly to what happeded with `lastlogin`, the lack of information about this feature makes it useless in our analysis.
+Therefore, we decided to removed it from the final data set.
+
+### Movie ID
+We can find two variables named `movieid` in the data set, one from the `movies` table, and another from the `ratings` table.
+The former is composed of unique entries, one per film, while the latter has several instances corresponding to the same movie, one per rating.
+That makes `movieid.ratings` larger than `movieid.movies` (respectively $\num{8196077}$ against $\num{66730}$ entries).
+None of these variables present NAs.
+
+Since the feature `movieid.movies` represents just the identification (ID) number of each film, there were no relevant statistics to compute.
+Hence, we focused our attention in `movieid.ratings` and plotted its histogram (fig. \@ref(fig:movieid)).
+
+```{r movieid, fig.cap= "\\label{movieid}Histogram of the movie ID, contained in the `ratings` tibble. There is a particular film with ID above 60000 with the most of ratings."}
+
+hist(movieid.ratings,
+  breaks= seq(round(min(movieid.ratings)) - 1, round(max(movieid.ratings)) + 1),
+  xlab= "Movie ID (ratings)"
+)
+```
+From the histogram, we can see that the range of the number of ratings encompasses four orders of magnitude, existing films with much more ratings than others (naturally).
+In particular, there is a movie with an ID greater than $\num{60000 }$ with around $\num{35000 }$ ratings that stands out.
+
+### Ratings
+Finally, we looked at the `ratings` feature.
+From the summary, the histogram, and the boxplot of the variable, we verify that: (*a*) the ratings range between 0.5 and 5.0; (*b*) the most common ratings are 3.0, 3.5, and 5.0; (*c*) the variance is equal to $\num{1.192404}$; and (*d*) the distribution is left skewed ($skew = -0.7054742$).
+We were already expecting to find a left skewed distribution for `ratings`, since in a sufficiently large data set of this nature, most of the ratings will lie above the medium (it is expected to find a large number of users liking a substantially large subset of films and, hence, giving them high ratings).
+The plots of the histogram and boxplot of `ratings` are illustrated in fig. \@ref(ratings).
+```{r}
+summary(rating) # min= 0.5; max= 5.0
+cat("Variance of `ratings`:", var(rating)) # 1.192404
+cat("Skewness of `ratings`:", skewness(rating)) # -0.7054742
+```
+```{r ratings, fig.cap= "\\label{fig:ratings}Histogram (*left*) and boxplot (*right*) of the `ratings` variable. As expected for this kind of variable (when the data set is sufficiently large), the distribution is left-skewed." }
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(rating,
+  breaks= seq(round(min(rating)) -0.5, round(max(rating)) +0.5, by= 0.5),
+  xlab= "Ratings"
+)
+boxplot(rating,
+  yaxt= "n",
+  main= "Boxplot of ratings"
+)
+axis(2, las= 2)
+
+```
+
+## Data engineering
+As mentioned previously, the variables `lastlogin`, `location`, and `memberfor`  were not needed for the context this analysis, and so they were removed (the feature `profileview` had already been removed in the preliminary data analysis).
+
+```{r}
+profiles= select(profiles, -c(lastlogin, location, memberfor))
+```
+
+The `gender` column in `profiles` was replaced by the updated `gender` standalone variable (including the "Other" gender), and only the instances with no NAs in the age were kept.
+At the end, `profiles` was reduced to a $\num{747178} \times 3$ tibble, containing no NAs and with the relevant features `userid`, `gender`, and `age`.
+```{r}
+profiles$gender= gender
+profiles= profiles %>%
+  filter(! profiles$age %in% profiles$age[is.na(profiles$age)])
+```
+
+We then created two variables, `mean_ratings` and `total_ratings`, respectively corresponding to the average rating by each user and total number of ratings per user.
+Those features were added to the `profiles` tibble.
+
+```{r}
+user.ratings= ratings %>%
+  group_by(userid) %>%
+  summarise(
+    mean_ratings= mean(rating),
+    total_ratings= n()
+  )
+# join user.ratings with profiles
+profiles= left_join(profiles, user.ratings, by= "userid")
+## replace NA values in `mean_ratings` and `total_ratings` by 0
+profiles= profiles %>%
+  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
+  mutate(total_ratings= replace_na(total_ratings, 0))
+rm(user.ratings)
+```
+
+A similar approach was used with the `movies` tibble, where two new columns were created containing the average rating per film (`mean_rating`) and the total number of ratings each movie got (`total_rating`).
+
+```{r}
+movie.ratings= ratings %>%
+  group_by(movieid) %>%
+  summarise(
+    mean_ratings= mean(rating),
+    total_ratings= n()
+  )
+## join movie.ratings with movies
+movies= left_join(movies, movie.ratings, by= "movieid")
+## replace NA values in `mean_ratings` and `total_ratings` with 0
+movies= movies %>%
+  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
+  mutate(total_ratings= replace_na(total_ratings, 0))
+rm(movie.ratings)
+```
+
+Finally, we joined the three tables into a single tibble named "flixster".
+The `ratings` and `profiles` tibbles were joined using the `userid` variable, to which the `movies` tibble was joined using the `movied` feature.
+
+```{r}
+flixster= ratings %>%
+  left_join(profiles, by= "userid") %>%
+  left_join(movies, by= "movieid")
+
+remove(movies, profiles, ratings)
+```
+
+A preview of the `flixster` tibble is shown below.
+```{r}
+flixster
+```
+
+
+
+
 
 
 We split the dataset in two parts, the training set called `train_set` and the test set called `test_set` with 70% and 30% of the original dataset respectively.

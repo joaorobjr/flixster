@@ -97,7 +97,29 @@ userid.profiles= profiles$userid
 # EXPLORATORY DATA ANALYSIS -----------------------------------------------
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
 # age ---------------------------------------------------------------------
-summary(age) # min= 12; max= 113; NAs= 255618
+
+# Variable age
+summary(age)
+percentile.age= quantile(age, c(0.01, 0.9951), na.rm= T)
+dfp.age=data.frame(value= percentile.age, percentile= c("1st", "99.5th"))
+ggplot(data.frame(age= age, gender= gender)) +
+  geom_histogram(
+    aes(x= age, fill= gender),
+    stat= "count",
+    position= "dodge"
+  ) +
+  labs(x= "Age (yrs)", y= "Total", 
+       title= "Distribuition of users per age and gender"#, 
+#       subtitle= "(right skewed distribution)"
+  ) +
+  geom_vline(
+    data= dfp.age,
+    aes(xintercept= value, colour= percentile),
+    show.legend= T,
+    linetype= "dashed") +
+  theme_bw()
+rm(percentile.age, dfp.age)
+
 idx.nas.age= which(is.na(age)) # 25.5% of all age values
 age= na.omit(age)
 var(age) # 107.5378
@@ -111,6 +133,18 @@ boxplot(age,
   main= "Boxplot of age"
 )
 axis(2, las= 2)
+
+ggplot(data.frame(age= age.no.out)) +
+  geom_histogram(
+    aes(x= age),
+    stat= "count",
+    position= "dodge"
+  ) +
+  labs(x= "Age (yrs)", y= "Total", 
+       title= "Histogram of ages"#, 
+  ) +
+  theme_bw()
+
 ### remove outliers
 age.out= boxplot.stats(age, coef= 4)$out
 age.no.out.idx= !(age %in% age.out)
@@ -136,9 +170,9 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ## correct wrong dates
 ## correct all wrong dates, i.e., dates before 2006-01-20 (Flixster's founding
 ##  date)
-date.flixster= as.Date("2006-01-20")
 
 # memberfor ---------------------------------------------------------------
+date.flixster= as.Date("2006-01-20")
 idx.memberfor.wrong= which(profiles$memberfor < date.flixster) # 57722
 profiles$memberfor[idx.memberfor.wrong]= date.flixster
 summary(profiles$memberfor) # min= 2006-01-20; NAs= 203
@@ -148,18 +182,20 @@ idx.nas.memberfor= which(is.na(memberfor)) # 203
 uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
 # fill in NAs in memberfor with earliest rating date
 # join profiles and ratings tables
-users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
-for (i in 1:nrow(users.ratings)) {
-  if (is.na(users.ratings$memberfor[i])) {
-    users.ratings$memberfor[i]= users.ratings$date[i]
-  }
-}
+#users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
+#for (i in 1:nrow(users.ratings)) {
+#  if (is.na(users.ratings$memberfor[i])) {
+#    users.ratings$memberfor[i]= users.ratings$date[i]
+#  }
+#}
 #write.csv(users.ratings, file= '../data/users-ratings.csv')
 #users.ratings= read.csv("../data/users-ratings.csv")
-summary(as.Date(users.ratings$memberfor)) # min= 2006-01-20
-memberfor= as.Date(users.ratings$memberfor)
-summary(memberfor)
+#summary(as.Date(users.ratings$memberfor)) # min= 2006-01-20
+#memberfor= as.Date(users.ratings$memberfor)
 # write.csv(memberfor, "../data/memberfor.csv")
+tmp= read.csv("../data/memberfor.csv")
+memberfor= as.Date(tmp$x)
+summary(memberfor)
 
 # dates -------------------------------------------------------------------
 summary(dates) # min= 1941-12-07
@@ -171,7 +207,8 @@ ratings$date[idx.date.wrong]= date.flixster
 summary(ratings$date) # min= 2006-01-20
 dates= ratings$date
 
-## gender
+
+# gender ------------------------------------------------------------------
 n.gender= length(gender)
 gender.woman= gender[gender == "Female"]
 n.woman= length(gender.woman)
@@ -240,14 +277,14 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 # location ----------------------------------------------------------------
 summary(location) # min= 0; max= 1617.0; NAs= 203
 idx.nas.location= which(is.na(location)) # ~0.02% of all values
-location= na.omit(location)
-var(location) # 81802.41
-skewness(location) # 1.036804
+loca= na.omit(location)
+var(loca) # 81802.41
+skewness(loca) # 1.036804
 hist(location,
-  breaks= seq(round(min(location)) - 1, round(max(location)) + 1),
+  breaks= seq(round(min(loca)) - 1, round(max(loca)) + 1),
   xlab= "Location"
 )
-boxplot(location,
+boxplot(loca,
   yaxt= "n",
   main= "Boxplot of location"
 )
@@ -326,8 +363,48 @@ axis(2, las= 2)
 
 
 
+# remove unnecessary variables --------------------------------------------
+profiles= select(profiles, -c(lastlogin, location, memberfor))
 
 
+# remove NAs --------------------------------------------------------------
+profiles$gender= gender
+profiles= profiles %>%
+  filter(! profiles$age %in% profiles$age[is.na(profiles$age)])
+
+
+# add extra rating columns ------------------------------------------------
+## mean_ratings: mean value of ratings per user
+## total_ratings: total number of ratings per user
+user.ratings= ratings %>%
+  group_by(userid) %>%
+  summarise(
+    mean_ratings= mean(rating),
+    total_ratings= n()
+  )
+## join user.ratings with profiles
+profiles= left_join(profiles, user.ratings, by= "userid")
+## replace NA values in `mean_ratingr` and `total_ratingsr` by 0
+profiles= profiles %>%
+  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
+  mutate(total_ratings= replace_na(total_ratings, 0))
+rm(user.ratings)
+
+## mean_ratings: mean value of ratings per film
+## total_ratings: total number of ratings per movie
+movie.ratings= ratings %>%
+  group_by(movieid) %>%
+  summarise(
+    mean_ratings= mean(rating),
+    total_ratings= n()
+  )
+## join movie.ratings with movies
+movies= left_join(movies, movie.ratings, by= "movieid")
+## replace NA values in `mean_ratings` and `total_ratings` with 0
+movies= movies %>%
+  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
+  mutate(total_ratings= replace_na(total_ratings, 0))
+rm(movie.ratings)
 
 
 
@@ -337,6 +414,19 @@ axis(2, las= 2)
 # ```{r}
 # knitr::opts_chunk$set(echo= F)
 # ```
+
+#ggplot(data.frame(age= age.no.out)) +
+#  geom_histogram(
+#    aes(x= age),
+#    stat= "count",
+#    position= "dodge"
+#  ) +
+#  labs(x= "Age (yrs)", y= "Total", 
+#       title= "Histogram of ages"#, 
+#  ) +
+#  theme_bw()
+
+
 
 # idx.date= which(ratings$date == min(ratings$date)) # before: 2; now: 3571
 # uids= ratings$userid[idx.date] %>% unique() # 220
@@ -348,12 +438,21 @@ axis(2, las= 2)
 # ratings$date[idx.date]= profiles[idx, ]$memberfor
 # summary(ratings$date)
 
+# There are a significant number of _NA's_ in variables _gender_ (67529 or
+# around 6.73% of total) and _age_ (255618 or around 25.49% of total).
+# We adopt the aproach the replacement the empty values into a new value to
+# treatmet of missing values. The empty values into variable _gender_ will be
+# replaced for new value `Other`. For the empty values into _age_ variable will
+# be set the value `0`.
+
+## Setting 'gender' as factors and 'age' as integer
+profiles <- profiles %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
 
 ## remove NAs
-sum(is.na(movies.raw)) # 0
-sum(is.na(profiles.raw)) # 637096 (63.5% of rows contain NAs)
-sum(is.na(ratings.raw)) # 0
-# profiles.raw= profiles.raw %>% na.omit()
+#sum(is.na(movies.raw)) # 0
+#sum(is.na(profiles.raw)) # 637096 (63.5% of rows contain NAs)
+#sum(is.na(ratings.raw)) # 0
+## profiles.raw= profiles.raw %>% na.omit()
 # sum(is.na(profiles.raw)) # 0
 
 
