@@ -1,17 +1,11 @@
 ---
-title: "Movies Recommendation in Flixster"
-author: "Robson Teixeira and Nuno Gomes"
-date: "17/05/2020"
+title: "A movies recommender system using Flixster data"
+subtitle: "Practical assignment of Advanced Topics in Data Science/Data Mining II"
+author: "By Robson Teixeira and Nuno Gomes"
+date: "M:DS -- FCUP, 17/05/2020"
 output:
-  html_document: 
-    df_print: tibble
-    fig_caption: yes
-    number_sections: yes
-    theme: cerulean
-    toc: yes
-    toc_float: yes
-  pdf_document:
-    citation_package: natbib
+  bookdown::pdf_document2:
+    #citation_package: natbib
     df_print: tibble
     fig_caption: yes
     fig_crop: no
@@ -19,12 +13,27 @@ output:
     fig_width: 7
     number_sections: yes
     toc: yes
+  bookdown::html_document2:
+    code_folding: "hide"
+    df_print: tibble
+    fig_caption: yes
+    includes:
+      in_header: header.html
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+    toc_float: yes
 geometry:
 - top=25mm
 - bottom=25mm
 - left=25mm
 - right=20mm
 - heightrounded
+header-includes:
+  \usepackage{caption}
+  \usepackage{fancyhdr}
+  \usepackage{lmodern}
+  \usepackage[detect-all]{siunitx}
 highlight-style: pygments
 linkcolor: blue
 mainfont: Source Variable Pro
@@ -32,32 +41,65 @@ fontsize: 12pt
 sansfont: Source Sans Pro
 documentclass: report
 urlcolor: blue
+references:
+  
+- id: netflix2009
+  title: The Netflix Prize
+  URL: https://www.netflixprize.com/
+  issued:
+    year: 2009
+- id: fenner2012
+  title: One-click science marketing
+  author:
+  - family: Fenner
+    given: Martin
+  container-title: Nature Materials
+  volume: 11
+  URL: 'http://dx.doi.org/10.1038/nmat3283'
+  DOI: 10.1038/nmat3283
+  issue: 4
+  publisher: Nature Publishing Group
+  page: 261-263
+  type: article-journal
+  issued:
+    year: 2012
+    month: 3
 ---
----
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include= F}
+knitr::opts_chunk$set(echo= T)
+require(arules)
+require(arulesSequences)
+require(arulesViz)
+require(caret)
+require(dplyr)
+require(e1071)
+require(forcats)
+require(funModeling)
+require(Hmisc)
+require(igraph)
+require(plotrix)
+require(recommenderlab)
+require(stringr)
+require(text2vec)
+require(tidyverse)
+require(tm)
 
-if(!require(tidyverse)) 
-  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
-if(!require(funModeling)) 
-  install.packages("funModeling", repos = "http://cran.us.r-project.org")
-if(!require(caret)) 
-  install.packages("caret", repos = "http://cran.us.r-project.org")
-if(!require(Hmisc)) 
-  install.packages("Hmisc", repos = "http://cran.us.r-project.org")
-if(!require(ggplot2)) 
-  install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+#if(!require(tidyverse)) 
+#  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+#if(!require(funModeling)) 
+#  install.packages("funModeling", repos = "http://cran.us.r-project.org")
+#if(!require(caret)) 
+#  install.packages("caret", repos = "http://cran.us.r-project.org")
+#if(!require(Hmisc)) 
+#  install.packages("Hmisc", repos = "http://cran.us.r-project.org")
+#if(!require(ggplot2)) 
+#  install.packages("ggplot2", repos = "http://cran.us.r-project.org")
 
-library(tidyverse)
-library(funModeling)
-library(caret)
-library(Hmisc)
-library(ggplot2)
 
-options(scipen=999)
+options(scipen= 999) # turns off scientific notation; to turn it back on, use scipen= 0
 ```
-# Abstract
+# Abstract {-}
 We report on the methodology we adopted to create a recommendation system for films using the Flixster data set, and on the results we obtained.
 Our model is based on the assumption that if a group of users had liked the same films in the past, they will like similar movies in the future.
 Hence, if two users have a similar rating history (movies and ratings) and one of them has recently enjoyed a film that the other has not seen yet, then that movie is proposed to the latter.
@@ -70,91 +112,268 @@ They are widely used on the Web, mainly in online streaming services, such as Yo
 They serve three important functions: (*i*) to increase the profit of companies, (*ii*) to help users to select specific products within the available offer, by giving them personalised recommendations based on previous interactions, and (*iii*) to predict the rating for a new item.
 Companies struggle for customer loyalty on a daily basis, and while doing so, they invest on recommender systems that try to increase the likelihood of purchase, by analysing customers' preferences and past interactions.
 
-The importance of recommender systems on the success of businesses and on company-customer relationships can be inferred from the one million dollar prize that Netflix offered in 2006 to the person or team that could improve their recommendation system by at least 10%.^[https://www.netflixprize.com/]
+The importance of recommender systems on the success of businesses and on company-customer relationships can be inferred from the one million dollar prize that Netflix offered in 2006 to the person or team that could improve their recommendation system by at least $10\,\%$ [@netflix2009].
 The success of companies such as Amazon or platforms like Youtube lies partly in the recommendation and marketing strategies, based on the user preferences.
 
 During this project, we created a film recommendation system using the Flixster data set, while applying the knowledge acquired in the course of Advanced Topics in Data Science/Data Mining II over the second semestre of the Masters in Data Science.
 
 This report is organised as follows: 
 
-## Flixster Dataset
+# The Flixster data set
+Flixster was an American social-networking online service founded by Joe Greenstein and Sarah Chari in 2006.
+The platform allowed users to learn about films, to watch trailers, to share their ratings of movies, to discover new films based on their tastes and past views, and to know and meet other users with similar tastes in films.
+The company was bought by Fandango in 2016, and the website was shut down in February 2018 in the USA, and October 2019 internationally. 
 
-The `Flixster` is a social movie site which allow users to share movie ratings, discover new movies and meet others with similar movie taste. The dataset generated from `Flisxter` site consist of 8196077 ratings of 48794 movies by 147612 users. The data are distributed in three files: 
+```{r data, echo= F, error= F, warning= F}
+movies.orig= read.delim("../data/movie-names.txt")
+profiles.orig= read.csv(
+  "../data/profile.txt",
+  skipNul= T,
+  na.strings= c("N/A", "")
+)
+ratings.orig= read.delim(
+  "../data/ratings.timed.txt",
+  sep= "\t",
+  skipNul= T,
+  col.names= c("userid", "movieid", "rating", "date")
+)
 
-* `profile.txt` : contains informations regarding the users like user id, gender, age, location, for how long it has been a member
-
-* `movie-names.txt` : contains information regarding movies as name and movie id
-
-* `Ratings.time.txt` : contains information on the ratings given by users to movies and on which date
-
-```{r data_load, echo=FALSE, error=FALSE, warning=FALSE}
-profile <- read.csv("../data/profile.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE)
-
-ratings <- read.table("../data/ratings.timed.txt", header = TRUE, 
-                         sep = "\t", skipNul = TRUE,
-                         col.names = c("userid", "movieid", "rating", "date"))
-
-movies <- read.delim("../data/movie-names.txt", na.strings = c("N/A",""), stringsAsFactors = FALSE )
 ```
 
-A summary of *movies* is given below, togeher with several first rows of dataframe:
+The data set used in this study was provided by the Flisxter website, and it can still be found online.^[https://sites.google.com/view/mohsenjamali/flixter-data-set]
+It consists of $\num{8196077}$ ratings of $\num{48794}$ films by $\num{147612}$ users.
+The data are distributed in three files: 
 
-```{r movies_summ, warning=FALSE, error=FALSE, echo=FALSE}
-glimpse(movies)
-df_status(movies)
-head(movies)
+* **movie-names.txt** --- a file containing a collection of \num{66720} film titles and corresponding identification tags;
+
+* **profile.txt** --- a file with \num{1002796} instances, containing general information regarding the users, including user id, gender, age, location, for how long the user has been a member, and the code tags for the last login and the profile view;
+
+* **Ratings.time.txt** --- the aforementioned data set, with \num{8196077} ratings, including the user ID, the movie ID, and the date the rating was registered.
+
+The three data files were loaded into the variables `movies`, `profiles`, and `ratings`, respectively.
+A summary of the structure of each of them and a glimpse of their first rows is presented in what follows.
+
+```{r movies_summary, warning= F, error= F, echo= F}
+glimpse(movies.orig)
+df_status(movies.orig)
+head(movies.orig)
+```
+The previous output represents a glimpse of the `movies` *tibble*, which contains $\num{66730}$ records and two variables (`moviename` and `movieid`) of character and integer types, respectively.
+The table contains $\num{66730}$ unique values, with no zeros, no "not availables" (NAs), nor infinites.
+In its original form, the `moviename` variable contains html code, which was subsequently removed (see section \@ref(data-cleaning)).
+
+```{r profiles_summary, warning= F, error= F, echo= F}
+glimpse(profiles.orig)
+df_status(profiles.orig)
+head(profiles.orig)
+```
+The output above highlights the `profiles` tibble, with $\num{1002796}$ records and seven variables: the type-integer `userid`, `location`, and `lastlogin`, and the type-character `gender`, `memberfor`, `profileview`, and `age`).
+Zeros and NAs are present in some variables---`location` or `age`, for example---but there are no infinite values.
+The time tag in the `memberfor` variable was removed (see section \@ref(data-cleaning)) for being always equal to 00:00:00.
+
+```{r ratings_summary, warning= F, error= F, echo= F}
+glimpse(ratings.orig)
+df_status(ratings.orig)
+head(ratings.orig)
+```
+Above, the `ratings` tibble, with $\num{8196077}$ instances and four variables (`userid`, `movieid`, `rating`, and `date`).
+Similarly to the previous case, the time tag in `date` was removed (section \@ref(data-cleaning)).
+
+Table \@ref(tab:variables) describes all variables contained in the three original tables of the data set.
+Clearly, the type of some of variables is incorrect and inconvenient for analysis---`age`, `date`, and `gender`, just to name a few---and that was taken care of in section \@ref(data-cleaning).
+
+Table: (\#tab:variables) List of variables present in the three original files from the Flixster data set.
+
+Variable    |Type        |Description                   |Tibble
+------------|------------|------------------------------|------
+age         |character   |Age of user                   |profiles
+date        |character   |Date in which user rated movie|ratings
+gender      |character   |User gender                   |profiles
+lastlogin   |integer     |Last login numerical tag      |profiles
+location    |integer     |Location identifier of user   |profiles
+memberfor   |character   |Member since date             |profiles
+movieid     |integer     |Movie unique identifier       |movies
+movieid     |integer     |Movie unique identifier       |ratings
+moviename   |character   |movie name                    |movies
+profileview |character   |Numerical tag of the user     |profiles
+rating      |double      |Rating of movie by user       |ratings
+userid      |integer     |User unique identifier        |profiles
+userid      |integer     |User unique identifier        |ratings
+
+
+# Exploratory data analysis and engineering {#edae}
+The creation of a recomendation system requires the identification of the most important features involved in the prediction of the ratings.
+With that goal in mind, we cleaned the data (section \@ref(data-cleaning)) and analysed statistically the variables (section \@ref(eda)) to understand them and the relationships between them.
+
+```{r}
+movies.raw= data.frame(movies.orig)
+profiles.raw= data.frame(profiles.orig)
+ratings.raw= data.frame(ratings.orig)
 ```
 
-A summary of *users* is given below, togeher with several first rows of dataframe:
+## Data cleaning {#data-cleaning}
+We started by removing the time tag from the variables `date` and `memberfor`, as it was always equal to 00:00:00 and, thus, irrelevant for our analysis.
 
-```{r users_summ, warning=FALSE, error=FALSE, echo=FALSE}
-users= profile
-glimpse(users)
-df_status(users)
-head(users)
+```{r}
+ratings.raw$date= ratings.raw$date %>% str_replace(" 00:00:00", "")
+profiles.raw$memberfor= profiles.raw$memberfor %>% str_replace(" 00:00:00", "")
 ```
 
-The variables _gender_ and _age_ are presented as character and should be changed to factor and integer respectively.
+Then, we converted the variables `age` and `provileview` to integers, `gender` to a factor, and `memberfor` and `date` to dates.
+```{r, warning= F}
+profiles.raw$age= as.integer(profiles.raw$age)
+profiles.raw$profileview= as.integer(profiles.raw$profileview)
+profiles.raw$gender= as.factor(profiles.raw$gender)
+profiles.raw$memberfor= as.Date(profiles.raw$memberfor)
+ratings.raw$date= as.Date(ratings.raw$date)
+```
+
+Several movie included strange characters in their names due to badly or poorly rendered ASCII codes.
+Those were identified and replaced.
+```{r}
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&#233;", "é")
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&amp;", "&")
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&#\\d*;", "")
+
+```
+
+Finally, for the sake of personal taste and convenience, we converted the three main tables into tibbles.
+```{r}
+movies= tbl_df(movies.raw)
+profiles= tbl_df(profiles.raw)
+ratings= tbl_df(ratings.raw)
+```
+A quick inspection allowed us to conclude that the `profilesview` and `age` variables were the same.
+So, we decided to remove the former right away, even before a more in depth exploratory data analysis.
+```{r}
+profiles= profiles %>% select(-"profileview")
+```
+
+Below is a summary of the three tables---respectively `movies`, `profiles`, and `ratings`---as they stood after the preliminary cleaning of the variables.
+```{r}
+movies
+profiles
+ratings
+```
+
+## Statistical exploration of the variables {#eda}
+```{r}
+age= profiles$age
+dates= ratings$date
+gender= fct_explicit_na(profiles$gender, "Other")
+lastlogin= profiles$lastlogin
+location= profiles$location
+memberfor= profiles$memberfor #
+movieid.movies= movies$movieid
+movieid.ratings= ratings$movieid
+moviename= movies$moviename
+rating= ratings$rating
+userid.ratings= ratings$userid
+userid.profiles= profiles$userid
+```
+
+Understanding the structure of the data, the distribution of the variables, and the relationships between them is fundamental to build a solid model.
+We therefore analysed each of the features present in tab. \@ref(tab:variables).
+
+### Age
+The variable `age` has a minimum of 12 years, a maximum of 113 years, and a median of 25 years.
+The maximum is clearly an outlier.
+The variable also contains more than $\num{255000}$ NAs, corresponding to approximately $25.5\,\%$ of all age values.
+```{r}
+summary(age) # min= 12; max= 113; NAs= 255618
+idx.nas.age= which(is.na(age)) # 25.5% of all age values
+age= na.omit(age)
+```
+Removing the NAs, we obtain a variance of $\num{107.5}$ years.
+```{r}
+var(age) # 107.5378
+```
+The skeweness is positive, indicating a right-skewed distribution.
+```{r}
+skewness(age) # 2.444335
+```
+
+We plotted the histogram and the boxplot of `ages` (fig. \@ref(fig:age-outliers)).
+```{r age-outliers, fig.cap= "\\label{fig:age-outliers}histogram (*left*) and boxplot (*right*) of the `age` variable. The distribution is right skewed and exihibits several outliers."}
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(age,
+  breaks= seq(round(min(age)) - 1, round(max(age)) + 1, by= 1),
+  xlab= "Age (yrs)"
+)
+boxplot(age,
+  yaxt= "n",
+  main= "Boxplot of age"
+)
+axis(2, las= 2)
+```
+
+Most of the individuals are between 18 and 24 years old.
+The histogram highlights the right skeweness of the distribution.
+This is expected, since Flixster's customers were typically young.
+
+The set of ages above 71 years old corresponded to $0.5\,\%$ of all ages and, thus, they could be safelly considered as outliers.
+The histogram and boxplot of `ages` without outliers is represented in fig. \@ref(fig:age-no-outliers).
+```{r}
+age.out= boxplot.stats(age, coef= 4)$out
+age.no.out.idx= !(age %in% age.out)
+age.no.out= age[age.no.out.idx]
+summary(age.no.out) # max= 71 (99.5% of values)
+```
+```{r age-no-outliers, fig.cap= "\\label{fig:age-no-outliers}histogram (*left*) and boxplot (*right*) of `ages` after removing the outliers."}
+par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
+hist(age.no.out,
+  breaks= seq(round(min(age.no.out)) - 1, round(max(age.no.out)) + 1, by= 1),
+  xlab= "Age (yrs)",
+  main= "Histogram of age"
+)
+boxplot(age.no.out, outline= F, yaxt= "n")
+axis(2, las= 2)
+mtext(
+  side= 3, line= 2, at= 1, cex= 1.2,
+  expression(paste("Boxplot of age"))
+)
+mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
+```
+More than $\num{40000}$ Flixster's users were approximately 25 years old.
+
+
+
+
 
 The variables _location_, _memberfor_, _lastlogin_ and _profileview_ are not needed for the context this analysis, so they should be removed.
 
 There are a significant number of _NA's_ in variables _gender_ (67529 or around 6.73% of total) and _age_ (255618 or around 25.49% of total). We adopt the aproach the replacement the empty values into a new value to treatmet of missing values. The empty values into variable _gender_ will be replaced for new value `Other`. For the empty values into _age_ variable will be set the value `0`.
 
-A summary of *ratings* is given below, togeher with several first rows of dataframe:
 
-```{r ratings_summ, warning=FALSE, error=FALSE, echo=FALSE}
-glimpse(ratings)
-df_status(ratings)
-head(ratings)
-```
+```{r clean_data, warning= F, message= F}
+movies= movies.orig
+profiles= profiles.orig
+ratings= ratings.orig
 
-# Methods and Analysis
+## Remove no relevant variables
+profiles <- select(profiles, -c(location, memberfor, lastlogin, profileview) )
 
-## Data Preparation
+## Setting 'gender' as factors and 'age' as integer
+profiles <- profiles %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
 
-In this section we prepare the dataset to be used in the analysis. Some steps of cleaning data are applied.
+## Add column range_age into user data set
+profiles <- profiles %>% mutate(range_age = cut_width(age, 10, boundary = 0) )
 
-```{r clean_data, warning=FALSE, message=FALSE}
-# Remove no relevant variables
-users <- select(users, -c(location, memberfor, lastlogin, profileview) )
+## replace NA values into gender with "unknown"
+profiles <- profiles %>% mutate(gender = replace(gender, is.na(gender), "unknown"))
 
-# Setting 'gender' as factors and 'age' as integer
-users <- users %>% mutate(gender = as.factor(gender)) %>% mutate(age = as.integer(age))
+## replace NA values into age with "0"
+profiles <- profiles %>% mutate(age = replace(age, is.na(age), 0))
 
-# Add column range_age into user data set
-users <- users %>% mutate(range_age = cut_width(age, 10, boundary = 0) )
+flixster <- ratings %>% left_join(profiles, by = "userid") %>% left_join(movies, by = "movieid")
 
-# replace NA values into gender with "unknown"
-users <- users %>% mutate(gender = replace(gender, is.na(gender), "unknown"))
-
-# replace NA values into age with "0"
-users <- users %>% mutate(age = replace(age, is.na(age), 0))
-
-flixster <- ratings %>% left_join(users, by = "userid") %>% left_join(movies, by = "movieid")
-
-remove(movies, users, ratings)
+remove(movies, profiles, ratings)
 
 ```
+
 
 We split the dataset in two parts, the training set called `train_set` and the test set called `test_set` with 70% and 30% of the original dataset respectively.
 
@@ -200,17 +419,9 @@ glimpse(train_set)
 
 From this initial exploration, we can see that `train_set` consists of 5757622 observations spread across 8 variables. The user information are stored in userid, gender, age, range_age columns; the movie information are stored in movieid and moviename columns; the rating information are stored in rating and date columns.   
 
-Variables   |Type        |Description
-------------|------------|------------------------------
-userid      |integer     |User unique identifier
-movieid     |integer     |Movie unique identifier
-rating      |numeric     |rating movie set by user
-date        |factor      |Date that user rating movie
-gender      |factor      |User gender
-age         |integer     |Age of user
-range_age   |factor      |rande age of user
-moviename   |character   |movie name
 
 
 
 
+
+# References {-}

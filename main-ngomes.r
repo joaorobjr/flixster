@@ -32,17 +32,17 @@ getmode= function(arr) {
 
 
 # SETUP -------------------------------------------------------------------
-ratings.orig= read.delim(
-  "../data/ratings.timed.txt",
-  sep= "\t",
-  skipNul= T, # skip NULL values
-  col.names= c("userid", "movieid", "rating", "date")
-)
 movies.orig= read.delim("../data/movie-names.txt")
 profiles.orig= read.csv(
   "../data/profile.txt",
   skipNul= T,
   na.strings= c("N/A", "")
+)
+ratings.orig= read.delim(
+  "../data/ratings.timed.txt",
+  sep= "\t",
+  skipNul= T, # skip NULL values
+  col.names= c("userid", "movieid", "rating", "date")
 )
 
 ## working data frames
@@ -61,6 +61,14 @@ profiles.raw$gender= as.factor(profiles.raw$gender)
 profiles.raw$memberfor= as.Date(profiles.raw$memberfor)
 profiles.raw$profileview= as.integer(profiles.raw$profileview)
 ratings.raw$date= as.Date(ratings.raw$date)
+## remove ascii codes from movies
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&#233;", "é")
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&amp;", "&")
+movies.raw$moviename= movies.raw$moviename %>%
+  str_replace_all("&#\\d*;", "")
+
 
 ## tibble version of data frames
 movies= tbl_df(movies.raw)
@@ -326,6 +334,10 @@ axis(2, las= 2)
 
 
 # TESTING (to remove) -----------------------------------------------------
+# ```{r}
+# knitr::opts_chunk$set(echo= F)
+# ```
+
 # idx.date= which(ratings$date == min(ratings$date)) # before: 2; now: 3571
 # uids= ratings$userid[idx.date] %>% unique() # 220
 # memberfor[unique(idx.date)]
