@@ -17,6 +17,7 @@ require(gridExtra)
 require(reshape2)
 require(lubridate)
 require(caret)
+require(ggplot2)
 
 options(scipen=999)
 
@@ -57,6 +58,9 @@ ratings.raw$date = ratings.raw$date %>% str_replace(' 00:00:00', "")
 # Adjust data types
 ratings.raw = ratings.raw %>% mutate(date = as.Date(date))
 
+# Flixster's founding date)
+date.flixster = as.Date("2006-01-20")
+
 # Set correct memberfor date for dates before date.flixster
 ratings.raw = ratings.raw %>% 
   mutate(date = if_else(date < date.flixster, date.flixster, date))
@@ -78,9 +82,6 @@ levels(profiles.raw$gender) = c(levels(profiles.raw$gender), "Other")
 
 # replace NA values into gender with "unknown"
 profiles.raw = profiles.raw %>% mutate(gender = replace_na(gender, "Other"))
-
-# Flixster's founding date)
-date.flixster = as.Date("2006-01-20")
 
 # Set correct memberfor date for dates before date.flixster
 profiles.raw = profiles.raw %>% 
@@ -142,20 +143,23 @@ movies = tbl_df(movies.raw)
 profiles = tbl_df(profiles.raw)
 ratings = tbl_df(ratings.raw)
 
-rm(movies.orig, movies.raw, ratings.orig, ratings.raw, profiles.orig, profiles.raw)
+rm(movies.orig, movies.raw, ratings.orig, ratings.raw, profiles.orig, 
+   profiles.raw)
 
-#### EXPLORATORY DATA ANALYSIS ----------------------------------------------
+#### EXPLORATORY DATA ANALYSIS -------------------------------------------
 
 # Variable age
 summary(age)
 percentile_var=quantile(age, c(0.01, 0.9953), na.rm = T)
 dfp=data.frame(value=percentile_var, percentile=c("1th", "99.5th"))
 ggplot(profiles) +
-  geom_histogram(aes(x = age, fill = gender), stat = "count", position = "dodge") +
+  geom_histogram(aes(x = age, fill = gender), stat = "count", 
+                 position = "dodge") +
   labs(x = "Age (yrs)", y = "Total", 
        title = "Distribuition of User Per Age and Gender", 
        subtitle = "The distribution is right skewed") +
-  geom_vline(data=dfp, aes(xintercept=value, colour = percentile), show.legend = T, linetype="dashed") +
+  geom_vline(data=dfp, aes(xintercept=value, colour = percentile), 
+             show.legend = T, linetype="dashed") +
   theme_bw()
 
 rm(percentile_var, dfp)
@@ -171,11 +175,12 @@ ggplot(profiles) +
   theme_bw()
 
 #Popularity: nTop=20 more active users
-head(profiles %>% select(userid, gender, age, memberfor, q_ratings_user) %>% arrange(desc(q_ratings_user)), 20)
+head(profiles %>% select(userid,gender,age,memberfor,q_ratings_user) %>% 
+       arrange(desc(q_ratings_user)), 20)
 
 # Distribution of Ratings Per Movies
 ggplot(movies) +
-  geom_histogram(aes(x=q_ratings_movie), color = "white", binwidth = 0.2) +
+  geom_histogram(aes(x=q_ratings_movie), color = "white", binwidth = 0.2)+
   scale_x_log10() + 
   ggtitle("Distribution of Ratings Per Movies", 
           subtitle = "The distribution is right skewed") +
@@ -202,7 +207,8 @@ ratings %>% mutate(year = year(date)) %>%
 ratings %>% mutate(month = month(date, label = T)) %>% 
   mutate(year = year(date)) %>% 
   ggplot(aes(x=month, fill=year)) +
-  geom_histogram(stat = "count", binwidth = 0.2, color = "white", position = "dodge") + 
+  geom_histogram(stat = "count", binwidth = 0.2, color = "white", 
+                 position = "dodge") + 
   ggtitle("Rating Distribution Per Month") +
   xlab("Month") +
   ylab("Number of Ratings") +
@@ -272,8 +278,7 @@ rm(flixster)
 
 #Remove variables
 flixster.sample = select(flixster.sample, 
-                         c(userid, gender, movieid, 
-                           moviename, rating, date))
+                         c(userid, movieid, rating, date))
 
 # # 'test_set' will be 30% of flixster datase
 # set.seed(755)
@@ -478,18 +483,12 @@ save(binarymodels, train_binary, test_binary, binaryratingmat,
 # getModel(modelAR)
 # rules <- getModel(modelAR)$rule_base
 # inspect(rules)
-# 
-# user.id = test_set$userid[1]
-# users = as.matrix(test_set[test_set$userid == user.id,])
-# users = as(users, "realRatingMatrix")
-# users = binarize(users, minRating = 0.5)
-# predicted.ar = predict(rec.ar, users, 2)
 
 binary.models$AR_binaryRatingMatrix$parameters
 
 flixster.sample.ar = select(flixster.sample, c(userid, movieid))
 
-#ratingmat = dcast(flixster.sample, userid~movieid , value.var="rating", na.rm=FALSE)
+ratingmatAR = dcast(flixster.sample, userid~movieid , value.var="rating", na.rm=FALSE)
 
 #ratingmat <- dcast(flixster.sample.ar, userid~movieid, fun.aggregate = count())
 
@@ -511,3 +510,79 @@ modelAR = Recommender(data = train, method = "AR", param=list(confidence=0.2))
 getModel(modelAR)
 rules <- getModel(modelAR)$rule_base
 inspect(rules)
+
+# COMPARE MODELS ---------------------------------------------------------
+
+load("data/models-recommendations.rdata")
+
+# In order to compare different models, I define them as a following list:
+# 
+# - Binary Approach  
+# * Item-based Collaborative Filtering
+# * User-based Collaborative Filtering
+# * Popularity
+# 
+# - No-Binary Approach  
+# * Item-based Collaborative Filtering
+# * User-based Collaborative Filtering
+# * Popularity
+
+# PREPARE EVALUATION -----------------------------------------------------
+models_to_evaluate <- list(
+  IBCF = list(name = "IBCF"),
+  UBCF = list(name = "UBCF"), 
+  POP  = list(name = "POPULAR")
+)
+
+topN = c(1, 2, 5)
+
+# EVALUATE BINARY MODELS -------------------------------------------------
+evalBinary <- evaluationScheme(data = binaryratingmat, 
+                              method = "cross-validation",
+                              k = 4, 
+                              given = 1, 
+                              goodRating = 3)
+
+results.binary <- evaluate(x = evalBinary, 
+                    method = models_to_evaluate, 
+                    n = topN )
+results.binary
+
+#Results for IBCF model using binary approach: ")
+cmIBCFbin = getConfusionMatrix(results.binary$IBCF)
+cmUBCFbin = getConfusionMatrix(results.binary$UBCF)
+cmPOPbin = getConfusionMatrix(results.binary$POP)
+#cmARbin = getConfusionMatrix(results.binary$AR)
+
+plot(results.binary, annotate = TRUE, legend = "topleft", main = "ROC Curve") 
+
+plot(results.binary, annotate = TRUE, "prec/rec", legend = "topleft", 
+     main = "Precision-Recall")
+
+# EVALUATE NO-BINARY MODELS -------------------------------------------------
+
+eval <- evaluationScheme(data = ratingmat, 
+                              method = "cross-validation",
+                              k = 4, 
+                              given = 1, 
+                              goodRating = 3)
+
+results <- evaluate(x = eval, 
+                    method = models_to_evaluate, 
+                    n = topN )
+results
+
+#Results for IBCF model using binary approach: ")
+cmIBCF = getConfusionMatrix(results$IBCF)
+cmUBCF = getConfusionMatrix(results$UBCF)
+cmPOP = getConfusionMatrix(results$POP)
+#cmAR = getConfusionMatrix(results$AR)
+
+plot(results, annotate = TRUE, legend = "topleft", main = "ROC Curve") 
+
+plot(results, annotate = TRUE, "prec/rec", legend = "topleft", 
+     main = "Precision-Recall")
+
+save(models_to_evaluate, topN, evalBinary, results.binary, eval, results, 
+     file = "data/eval-results.rdata")
+
