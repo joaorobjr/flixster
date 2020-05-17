@@ -30,6 +30,47 @@ getmode= function(arr) {
   uniq.vals[which.max(tabulate(match(arr, uniq.vals)))]
 }
 
+#' Split data set into train and test sets
+#' @author Nuno R. C. Gomes <nunorcgomes@gmail.com> (2020/03/18)
+#' @param dataset A data set
+#' @param target Target variable (name or index)
+#' @param frac Proportion of data set for training
+#' @param seed A seed for the sampling; Default: 42
+#' @return Vector \code{tts} of mode "list"
+#' @examples
+#' train_test_split(pid, "diabetes", 0.8)
+train_test_split= function(dataset, target, frac, seed= 42) {
+  set.seed(seed)
+  nr= nrow(dataset)
+  seqnr= 1:nr
+  # target variable and index
+  if (typeof(target) == "character") {
+    target.idx= which(colnames(dataset) == target)
+  } else if (typeof(target) == "double") {
+    target.idx= target
+    target= colnames(dataset[target.idx])
+  } else {
+    stop("Invalid `target` argument.")
+  }
+  
+  # train and test sets
+  train.idx= sample(seqnr, frac*nr)
+  test.idx=  setdiff(seqnr, train.idx)
+  X.train=   dataset[train.idx, -target.idx]
+  y.train=   dataset[train.idx,  target.idx]
+  X.test=    dataset[test.idx,  -target.idx]
+  y.test=    dataset[test.idx,   target.idx]
+  
+  # list of data frames
+  tts= vector('list', 4)
+  names(tts)= c('X_train', 'y_train', 'X_test', 'y_test')
+  tts[[1]]= X.train
+  tts[[2]]= y.train
+  tts[[3]]= X.test
+  tts[[4]]= y.test
+  
+  return(tts)
+}
 
 # SETUP -------------------------------------------------------------------
 movies.path= file("../data/movie-names.txt")
@@ -421,6 +462,17 @@ user.ratings= ratings %>%
     mean.ratings.user= mean(rating),
     total.ratings.user= n()
   )
+
+## mean_ratings: mean value of ratings per film
+## total_ratings: total number of ratings per movie
+movie.ratings= ratings %>%
+  group_by(movieid) %>%
+  summarise(
+    mean.ratings.movie= mean(rating),
+    total.ratings.movie= n()
+  )
+
+# join tibbles ------------------------------------------------------------
 ## join user.ratings with profiles
 profiles.left= left_join(profiles, user.ratings, by= "userid")
 
@@ -440,14 +492,6 @@ profiles.left= profiles.left %>%
   mutate(total_ratings= replace_na(total_ratings, 0))
 rm(user.ratings)
 
-## mean_ratings: mean value of ratings per film
-## total_ratings: total number of ratings per movie
-movie.ratings= ratings %>%
-  group_by(movieid) %>%
-  summarise(
-    mean.ratings.movie= mean(rating),
-    total.ratings.movie= n()
-  )
 ## join movie.ratings with movies
 movies.left= left_join(movies, movie.ratings, by= "movieid")
 
@@ -463,6 +507,8 @@ movies= movies %>%
   mutate(total_ratings= replace_na(total_ratings, 0))
 rm(movie.ratings)
 
+
+# create flixster tibbles -------------------------------------------------
 ## join movies, profiles, and ratings into flixster tibbles
 flixster.inner= ratings %>% 
   inner_join(profiles.inner, by= "userid") %>% 
@@ -498,6 +544,16 @@ flixster= flixster.inner %>%
 save(flixster, file= "../data/flixster.rdata")
 load("../data/flixster.rdata")
 
+flixster.small= flixster %>% 
+  select(
+    userid, gender, age,
+    movieid, moviename,
+    rating, date
+  )
+sum(apply(flixster.small, 1, anyNA)) # 0 NAs
+save(flixster.small, file= "../data/flixster.small.rdata")
+load("../data/flixster.small.rdata")
+
 flixster.tiny= flixster %>% 
   select(
     userid,
@@ -509,21 +565,11 @@ sum(apply(flixster.tiny, 1, anyNA)) # 0 NAs
 save(flixster.tiny, file= "../data/flixster.tiny.rdata")
 load("../data/flixster.tiny.rdata")
 
-flixster.small= flixster %>% 
-  select(
-    userid, gender, age,
-    movieid, moviename,
-    rating, date
-  )
-sum(apply(flixster.small, 1, anyNA)) # 0 NAs
-save(flixster.small, file= "../data/flixster.small.rdata")
-load("../data/flixster.small.rdata")
-
 #remove(movies, profiles, ratings)
 
 
 # data exploration --------------------------------------------------------
-# distribution of ratings per users
+## distribution of ratings per users
 users= length(unique(flixster$userid))
 
 flixster %>% 
@@ -556,12 +602,95 @@ ggplot() +
     binwidth= 0.2
   ) +
   scale_x_log10() + 
-  ggtitle("Distribution of ratings per users") + 
-  xlab("Number of ratings") +
+  ggtitle("Distribution of ratings per number of users") + 
+  xlab("log10(Number of ratings)") +
   ylab("Number of users") + 
   theme_bw()
 
+users.2.ratings= flixster[flixster$total.ratings.user <= 3, ] %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  nrow()
 
+flixster %>%
+  group_by(total.ratings.user) %>% 
+  summarise(n= n()) %>% 
+  arrange(n)
+
+## heatmap users x films
+users.samp= sample(unique(flixster$userid), 100)
+set.seed(42)
+flixster %>% filter(userid %in% users.samp) %>% 
+  select(userid, movieid, rating) %>% 
+  mutate(rating= 1) %>% 
+  spread(movieid, rating) %>% 
+  select(sample(ncol(.), 100)) %>% 
+  as.matrix() %>% 
+  t(.) %>% 
+  image(1:100, 1:100, ., xlab= "Movie", ylab= "User")
+abline(h= 0:100+0.5, v= 0:100+0.5, col= "grey")
+title("Heatmap of User x Movie")
+
+## distribution of ratings per movie
+flixster %>% group_by(movieid) %>%
+  summarise(n= n()) %>%
+  ggplot(aes(n)) +
+  geom_histogram(color= "white") +
+  scale_x_log10() +
+  ggtitle("Distribution of ratings per number of movies") +
+  xlab("log10(Number of ratings)") +
+  ylab("Number of movies") +
+  theme_bw()
+
+# distribution of ratings per date
+flixster %>%
+  ggplot(aes(date)) +
+  geom_histogram(
+    color= "white",
+    binwidth= 29.5) +
+  ggtitle("Distribution of ratings per date") +
+  xlab("Date") +
+  ylab("Number of ratings") +
+  theme_bw()
+
+# table of dates with ratings
+flixster %>%
+  group_by(date, moviename) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  head(10)
+
+# number of ratings
+data.rating= flixster %>%
+  group_by(rating) %>%
+  summarise(n= n())
+data.rating$rating= as.character(data.rating$rating)
+data.rating %>% 
+  ggplot() +
+  geom_histogram(
+    aes(x= rating, y= n),
+    stat= "identity",
+    color= "white"
+  ) +
+  ggtitle("Distribution of ratings") +
+  xlab("Rating") +
+  ylab("Number of ratings") +
+  theme_bw()
+
+
+# train/test split --------------------------------------------------------
+## train/test split
+tts.tiny= train_test_split(flixster.tiny, "rating", 0.7)
+x.train.tiny= tts.tiny$X_train
+y.train.tiny= tts.tiny$y_train
+x.test.tiny=  tts.tiny$X_test
+y.test.tiny=  tts.tiny$y_test
+
+set.seed(42)
+x.train= sample_n(x.train.tiny, 100)
+y.train= sample_n(y.train.tiny, 100)
+x.test= sample_n(x.test.tiny, 30)
+y.test= sample_n(y.test.tiny, 30)
 
 
 

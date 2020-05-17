@@ -211,11 +211,53 @@ With that goal in mind, we cleaned the data (section \@ref(data-cleaning)) and a
 Since **R** does not have a base function to calculate the mode, we created one, the `getmode` function.
 It was useful in our statistical analysis and in the imputation of values in some of the variables.
 
-```{r eval= F}
+```{r eval= T}
 # compute the mode
 getmode= function(arr) {
   uniq.vals= unique(arr)
   uniq.vals[which.max(tabulate(match(arr, uniq.vals)))]
+}
+
+#' Split data set into train and test sets
+#' @author Nuno R. C. Gomes <nunorcgomes@gmail.com> (2020/03/18)
+#' @param dataset A data set
+#' @param target Target variable (name or index)
+#' @param frac Proportion of data set for training
+#' @param seed A seed for the sampling; Default: 42
+#' @return Vector \code{tts} of mode "list"
+#' @examples
+#' train_test_split(pid, "diabetes", 0.8)
+train_test_split= function(dataset, target, frac, seed= 42) {
+  set.seed(seed)
+  nr= nrow(dataset)
+  seqnr= 1:nr
+  # target variable and index
+  if (typeof(target) == "character") {
+    target.idx= which(colnames(dataset) == target)
+  } else if (typeof(target) == "double") {
+    target.idx= target
+    target= colnames(dataset[target.idx])
+  } else {
+    stop("Invalid `target` argument.")
+  }
+  
+  # train and test sets
+  train.idx= sample(seqnr, frac*nr)
+  test.idx=  setdiff(seqnr, train.idx)
+  X.train=   dataset[train.idx, -target.idx]
+  y.train=   dataset[train.idx,  target.idx]
+  X.test=    dataset[test.idx,  -target.idx]
+  y.test=    dataset[test.idx,   target.idx]
+  
+  # list of data frames
+  tts= vector('list', 4)
+  names(tts)= c('X_train', 'y_train', 'X_test', 'y_test')
+  tts[[1]]= X.train
+  tts[[2]]= y.train
+  tts[[3]]= X.test
+  tts[[4]]= y.test
+  
+  return(tts)
 }
 
 ```
@@ -780,7 +822,7 @@ flixster %>%
 
 Figure \@ref(fig:users-ratings) depicts the histogram of the number of ratings per user.
 
-```{r users-ratings, fig.align= "center", fig.cap= "\\label{users-ratings}Histogram of the number of ratings. Approximatelly 68.3% of the users rated 10 films or less."}
+```{r users-ratings, fig.align= "center", fig.cap= "\\label{users-ratings}Histogram of the number of ratings. Approximatelly 68.3% of the users rated 10 films or less. The x-axis is in a log10 scale."}
 flixster %>%
   group_by(userid) %>% 
   summarise(n= n()) %>% 
@@ -791,45 +833,126 @@ ggplot() +
     binwidth= 0.2
   ) +
   scale_x_log10() + 
-  ggtitle("Distribution of ratings per users") + 
-  xlab("Number of ratings") +
+  ggtitle("Distribution of ratings per number of users") + 
+  xlab("log10(Number of ratings)") +
   ylab("Number of users") + 
+  theme_bw()
+```
+
+We created a heatmap of users *versus* movies for a sample of 100 unique users (see \@ref(fig:heatmap)).
+As expected, the user-movie matrix is sparse, being the majority of cells empty.
+Some films had more ratings than others, and some users were more active than others.
+
+```{r heatmap, fig.align= "center", fig.height= 4, fig.width= 4, fig.cap= "\\label{heatmap}Heatmap of user *vs* movie created from a sample of unique user IDs. The matrix is sparse, with several empty cells. Some movies present more ratings, and some users are more active."}
+users.samp= sample(unique(flixster$userid), 100)
+set.seed(42)
+flixster %>% filter(userid %in% users.samp) %>% 
+  select(userid, movieid, rating) %>% 
+  mutate(rating= 1) %>% 
+  spread(movieid, rating) %>% 
+  select(sample(ncol(.), 100)) %>% 
+  as.matrix() %>% 
+  t(.) %>% 
+  image(1:100, 1:100, ., xlab= "Movie", ylab= "User")
+abline(h= 0:100+0.5, v= 0:100+0.5, col= "grey")
+title("Heatmap of User x Movie")
+```
+
+The sample distribution of ratings per number of movies is represented by the histogram of fig. \@ref(fig:ratings-movies).
+As expected, most of the films received a low number of ratings---typically up to approximatelly 100 ratings.
+
+```{r ratings-movies, fig.cap= "\\label{ratings-movies}Histogram of ratings per number of movies. The x-axis is in a log10 scale. Most of the films received approximately up to 100 ratings."}
+flixster %>% group_by(movieid) %>%
+  summarise(n= n()) %>%
+  ggplot(aes(n)) +
+  geom_histogram(color= "white") +
+  scale_x_log10() +
+  ggtitle("Distribution of ratings per number of movies") +
+  xlab("log10(Number of ratings)") +
+  ylab("Number of movies") +
+  theme_bw()
+```
+
+The histogram of ratings per date is plotted in fig. \@ref(fig:ratings-date).
+
+```{r ratings-date, fig.cap= "\\label{ratings-date}Histogram of ratings per date. The x-axis is in a log10 scale. Most of the films received approximately up to 100 ratings."}
+flixster %>%
+  ggplot(aes(date)) +
+  geom_histogram(
+    color= "white",
+    binwidth= 29.5) +
+  ggtitle("Distribution of ratings per date") +
+  xlab("Date") +
+  ylab("Number of ratings") +
+  theme_bw()
+```
+
+The year with the most activity in Flixster was 2007, followed by 2009.
+We cannot identify seasonality in the data.
+On the one hand, the peak of activity in 2007 coincide with the first half of the year, during and right after the two most important film awards happen (The Golden Globes in early January, and the Oscars in late February).
+However, on the other hand, 2008 clearly does not follow that pattern.
+In 2009, the number of ratings increased steadily until June, but started to decline rapidly after that, until the end of the data set.
+
+Table \@ref(tab:dates-ratings) highlights the dates with more ratings.
+Some of the titles are well-known blockbusters.
+
+Table: (\#tab:dates-ratings) List of film titles, sorted by date and by total number of ratings, in descending order..
+```{r dates-ratings}
+flixster %>%
+  group_by(date, moviename) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  head(10)
+```
+
+Figure \@(fig:ratings-n) depicts the sample distribution of Flixster's ratings.
+The most used classifications were 3 and above.
+```{r ratings-n, fig.cap= "\\label{ratings-n}Histogram of ratings. Classifications 3 and above were the most popular."}
+data.rating= flixster %>%
+  group_by(rating) %>%
+  summarise(n= n())
+data.rating$rating= as.character(data.rating$rating)
+data.rating %>% 
+  ggplot() +
+  geom_histogram(
+    aes(x= rating, y= n),
+    stat= "identity",
+    color= "white"
+  ) +
+  ggtitle("Distribution of ratings") +
+  xlab("Rating") +
+  ylab("Number of ratings") +
   theme_bw()
 ```
 
 
 
-
-We split the dataset in two parts, the training set called `train_set` and the test set called `test_set` with 70% and 30% of the original dataset respectively.
-
-```{r split_dataset, warning=FALSE, error=FALSE}
-
-# 'test_set' will be 30% of dataset
-set.seed(1, sample.kind="Rounding")
-test_index <- createDataPartition(y = flixster$rating, times = 1, p = 0.3, list = FALSE)
-
-train_set <- flixster[-test_index,]
-temp <- flixster[test_index,]
-
-# Make sure userid and movieid in 'test_set' are also in 'train_set'
-test_set <- temp %>% semi_join(train_set, by = "movieid") %>% semi_join(train_set, by = "userid")
-
-# Add rows removed from 'test_set' set back into 'train_set' set
-removed <- anti_join(temp, test_set)
-train_set <- rbind(train_set, removed)
-
-rm(test_index, temp, flixster, removed)
-
-```
-
-
-
-
+# Train/test split
+We split the data set in two parts, in a 7-to-3 ratio: the *train* set, containing $70\,\%$ of the data, and the *test* set, with the remainder $30\,\%$.
+The former was used to train the model, and we used the latter to simulate "fresh" data to evaluate the performance of the model.
 ```{r}
-glimpse(train_set)
-```
+tts.tiny= train_test_split(flixster.tiny, "rating", 0.7)
+x.train.tiny= tts.tiny$X_train
+y.train.tiny= tts.tiny$y_train
+x.test.tiny=  tts.tiny$X_test
+y.test.tiny=  tts.tiny$y_test
 
-From this initial exploration, we can see that `train_set` consists of 5757622 observations spread across 8 variables. The user information are stored in userid, gender, age, range_age columns; the movie information are stored in movieid and moviename columns; the rating information are stored in rating and date columns.   
+set.seed(42)
+x.train= sample_n(x.train.tiny, 100)
+y.train= sample_n(y.train.tiny, 100)
+x.test= sample_n(x.test.tiny, 30)
+y.test= sample_n(y.test.tiny, 30)
+```
+The split resulted in a train set with $\num{4291942}$ rows, and a test set with $\num{1839404}$ rows.
+
+The *target* variable, *i.e.*, the one we want to predict, is `rating`.
+So, it was removed from both the train and test sets, and saved in corresponding separate tibbles.
+
+
+
+
+
+
 
 
 
