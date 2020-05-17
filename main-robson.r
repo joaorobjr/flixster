@@ -20,7 +20,8 @@ require(caret)
 
 options(scipen=999)
 
-## load data
+### LOAD RAW DATA --------------------------------------------------------
+# Ratings ----------------------------------------------------------------
 ratings.orig = read.delim(
   '../data/ratings.timed.txt',
   sep = "\t",
@@ -28,7 +29,10 @@ ratings.orig = read.delim(
   # skip NULL values
   col.names = c("userid", "movieid", "rating", "date"),
 )
-movies.orig = read.delim('../data/movie-names.txt', stringsAsFactors = FALSE)
+# Movies ----------------------------------------------------------------
+movies.orig = read.delim('../data/movie-names.txt', 
+                         stringsAsFactors = FALSE)
+# Profile ----------------------------------------------------------------
 profiles.orig = read.csv(
   '../data/profile.txt',
   skipNul = T,
@@ -41,12 +45,11 @@ ratings.raw =  data.frame(ratings.orig)
 movies.raw =   data.frame(movies.orig)
 profiles.raw = data.frame(profiles.orig)
 
+# DATA PREPARATION -------------------------------------------------------
 
-##### DATA PREPARATION ------------------------------------------------------
+# DATA CLEANING ----------------------------------------------------------
 
-### DATA CLEANING -----------------------------------------------------------
-
-### Clean ratings data set --------------------------------------------------
+# Clean Ratings Data Set -------------------------------------------------
 
 # remove time tag from columns
 ratings.raw$date = ratings.raw$date %>% str_replace(' 00:00:00', "")
@@ -58,10 +61,11 @@ ratings.raw = ratings.raw %>% mutate(date = as.Date(date))
 ratings.raw = ratings.raw %>% 
   mutate(date = if_else(date < date.flixster, date.flixster, date))
 
-### Clean profile data set --------------------------------------------------
+# Clean Profile Data Set -------------------------------------------------
 
 # remove time tag from columns
-profiles.raw$memberfor = profiles.raw$memberfor %>% str_replace(' 00:00:00', "")
+profiles.raw$memberfor = profiles.raw$memberfor %>% 
+  str_replace(' 00:00:00', "")
 
 # Adjust data types
 profiles.raw = profiles.raw %>%
@@ -80,11 +84,13 @@ date.flixster = as.Date("2006-01-20")
 
 # Set correct memberfor date for dates before date.flixster
 profiles.raw = profiles.raw %>% 
-  mutate(memberfor = if_else(memberfor < date.flixster, date.flixster, memberfor))
+  mutate(memberfor = if_else(memberfor < date.flixster, date.flixster, 
+                             memberfor))
 
-# Add columns in `mean_ratings_user` and `q_ratings_user` into profile data set
-# The `mean_ratings_user` column contains the mean value of ratings per user
-# The `q_ratings_user` columns contains the total of rantings per user
+# Add columns in `mean_ratings_user` and `q_ratings_user` into profile 
+# data set. The `mean_ratings_user` column contains the mean value of 
+# ratings per user and the `q_ratings_user` columns contains the total
+# of rantings per user
 
 # calculate the mean value and total of ratings per user
 user.ratings = ratings.raw %>% group_by(userid) %>% 
@@ -102,16 +108,20 @@ rm(user.ratings)
 
 profiles.raw = select(profiles.raw, -c(profileview))
 
-### Clean movies data set ---------------------------------------------------
+### Clean Movies data set ------------------------------------------------
 
 # remove ASCII codes
-movies.raw$moviename = movies.raw$moviename %>% str_replace_all("&#233;", "é")
-movies.raw$moviename = movies.raw$moviename %>% str_replace_all("&amp;", "&")
-movies.raw$moviename = movies.raw$moviename %>% str_replace_all("&#\\d*;", "")
+movies.raw$moviename = movies.raw$moviename %>% 
+  str_replace_all("&#233;", "é")
+movies.raw$moviename = movies.raw$moviename %>% 
+  str_replace_all("&amp;", "&")
+movies.raw$moviename = movies.raw$moviename %>% 
+  str_replace_all("&#\\d*;", "")
 
-# Add columns in `mean_ratings_movie` and `q_ratings_movie` into movies data set.
-# The `mean_ratings_movie` column contains the mean value of ratings per movie
-# The `q_ratings_movie` columns contains the total of rantings per movie
+# Add columns in `mean_ratings_movie` and `q_ratings_movie` into movies 
+# data set. Tthe `mean_ratings_movie` column contains the mean value of 
+# ratings per movie and the `q_ratings_movie` columns contains the total
+# of rantings per movie
 
 # Calculate the mean value and total of ratings per movie
 movie.ratings = ratings.raw %>% group_by(movieid) %>% 
@@ -243,77 +253,223 @@ glimpse(movies.no.relevants) #4499277 obs of 14 variables
 user.low.ratings = flixster %>% filter(is.na(age), q_rating_user < 10) %>%
   select(userid, q_rating_user, gender, age, memberfor) %>%
   arrange(userid)
-####------------------------------------------------------------------------------
+
+# SAVE DATA SETS----------------------------------------------------------
 save(flixster, file = "flixster.RData")
 save(movies, file = "movies.RData")
 save(profiles, file = "profiles.RData")
 save(ratings, file = "ratings.RData")
-####------------------------------------------------------------------------------
+
+# EXTRACT SAMPLE ---------------------------------------------------------
 
 # Get movies rated by more active users and with a high number of ratings.
-flixster.sample = flixster %>% filter(q_ratings_movie > 410, q_ratings_user > 410)
+flixster.sample = flixster %>% 
+  filter(q_ratings_movie > 410, q_ratings_user > 410)
+
 glimpse(flixster.sample) #3696800 obs of 14 variables
 
 rm(flixster)
 
 #Remove variables
-flixster.sample = select(flixster.sample, c(userid, gender, movieid, moviename, rating, date))
+flixster.sample = select(flixster.sample, 
+                         c(userid, gender, movieid, 
+                           moviename, rating, date))
 
-# 'test_set' will be 30% of flixster datase
-set.seed(755)
-test_index <- createDataPartition(y = flixster.sample$rating, times = 1, p = 0.3, list = FALSE)
+# # 'test_set' will be 30% of flixster datase
+# set.seed(755)
+# test_index <- createDataPartition(y = flixster.sample$rating, 
+# times = 1, p = 0.3, list = FALSE)
+# 
+# train_set <- flixster.sample[-test_index,] #2587758 obs
+# test_set <- flixster.sample[test_index,] #1109042
+# 
+# #To make sure we don’t include users and movies in the test set 
+# #that do not appear in the training set
+# test_set <- test_set %>% semi_join(train_set, by = "movieid") %>%
+#   semi_join(train_set, by = "userid")
+# 
+# 
+# save(train_set, file = "train-set.RData")
+# save(test_set, file = "test-set.RData")
 
-train_set <- flixster.sample[-test_index,] #2587758 obs
-test_set <- flixster.sample[test_index,] #1109042
+# LOAD DATA SETS (.RData) ------------------------------------------------
+load("data/flixster.tiny.rdata")
+load("data/movies.rdata")
 
-#To make sure we don’t include users and movies in the test set 
-#that do not appear in the training set
-test_set <- test_set %>% semi_join(train_set, by = "movieid") %>%
-  semi_join(train_set, by = "userid")
+flixster.sample = sample_n(flixster.tiny, 10000)
 
+# BUILD MODELS AND RECOMMENDATIONS --------------------------------------- 
 
-save(train_set, file = "train-set.RData")
-save(test_set, file = "test-set.RData")
+# BINARY APPROACH --------------------------------------------------------
 
-### RECOMMENDATION  (Binary Approach)-------------------------------------
+# Some recommendation models work on binary data, so it might be useful to 
+# binarize the data, that is, define a table containing only 0s and 1s. 
+# The 0s will be either treated as missing values or as bad ratings.
+# 
+# In our case, define a matrix having 1 if the rating is above or equal to 
+# a definite threshold (for example, 0.5), and 0 otherwise. In this case, 
+# giving a bad rating to a movie is equivalent to not having rated it.
 
-rm(flixster.sample, test_index)
+binarymodels = recommenderRegistry$get_entries(
+  dataType ="binaryRatingMatrix")
 
-head(train_set)
-trainAR<-train_set[,-c(2,3,5,6,7)]
-head(trainAR)
-table(trainAR$movieid)
-dat <- table(trainAR$userid, trainAR$movieid)
-dm <- dist(dat)
+nobinarymodels = recommenderRegistry$get_entries(
+  dataType ="realRatingMatrix")
 
-#Create ratings matrix. Rows = userid, Columns = movieid
-rm <- dcast(train_set, userid~movieid, value.var = "rating", na.rm=FALSE)
-rm <- as.matrix(rm)
-rm <- as(rm, "realRatingMatrix")
-rmb <- binarize(rm, minRating = 0.5)
+# Prepare Rating Matrix --------------------------------------------------
 
-testrm <- dcast(test_set, userid~movieid, value.var = "rating", na.rm=FALSE)
-testrm <- as.matrix(testrm)
-testrm <- as(testrm, "realRatingMatrix")
-testrmb <- binarize(rm, minRating = 0.5)
+#Create ratings matrix. Rows = userId, Columns = movieId
+ratingmat = dcast(flixster.sample, userid~movieid, value.var="rating")
+ratingmat = as.matrix(ratingmat)
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingmat = as(ratingmat, "realRatingMatrix")
 
-# #Similarity of users
-# similarity_users <- similarity(rm[1:100, ], method = "cosine", which = "users")
-# as.matrix(similarity_users)
-# image(as.matrix(similarity_users), main = "User Similarity")
+#Create a binary rating matrix
+binaryratingmat = binarize(ratingmat, minRating = 0.5)
 
-#Similarity of movies
-#similarity_movies <- similarity(ratingmat[, 1:10], method = "cosine", which = "movies")
-#as.matrix(similarity_movies)
-#image(as.matrix(similarity_movies), main = "Movies Similarity")
+ntop = 10 # the number of top movies to recommend to each user
 
-binary.models <- recommenderRegistry$get_entries(dataType ="binaryRatingMatrix")
-binary.models$AR_binaryRatingMatrix$parameters
-binary.models$IBCF_binaryRatingMatrix$parameters
-binary.models$UBCF_binaryRatingMatrix$parameters
-binary.models$POPULAR_binaryRatingMatrix$parameters
+# Prepapre Training and Test data set ------------------------------------
+which_train = sample(x = c(TRUE, FALSE), 
+                      size = nrow(binaryratingmat),
+                      replace = TRUE, 
+                      prob = c(0.8, 0.2))
 
-# ASSOCIATION RULES -------------------------------------------------------------------
+train_binary = binaryratingmat[which_train, ]
+test_binary = binaryratingmat[!which_train, ]
+
+# IBCF (Binary Approach) -------------------------------------------------
+
+binarymodels$IBCF_binaryRatingMatrix$parameters
+
+binarymodelIBCF = Recommender(data = train_binary, method = "IBCF")
+
+binaryrecIBCF = predict(object = binarymodelIBCF, 
+                        newdata = test_binary, n = ntop)
+
+#Recommendations for the first user:
+recuser1 = binaryrecIBCF@items[[1]] # recommendation for the first user
+moviesuser1 = binaryrecIBCF@itemLabels[recuser1]
+moviesrecIBCF = moviesuser1
+for (i in 1:ntop){
+  moviesrecIBCF[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecIBCF
+
+# UBCF (Binary Approach) -------------------------------------------------
+
+binarymodels$UBCF_binaryRatingMatrix$parameters
+
+binarymodelUBCF = Recommender(data = train_binary, method = "UBCF")
+
+binaryrecUBCF = predict(object = binarymodelUBCF, 
+                        newdata = test_binary,n = ntop)
+
+#Recommendations for the first user:
+recuser1 = binaryrecUBCF@items[[1]] # recommendation for the first user
+moviesuser1 = binaryrecUBCF@itemLabels[recuser1]
+moviesrecUBCF = moviesuser1
+for (i in 1:10){
+  moviesrecUBCF[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecUBCF
+
+# POPULAR (Binary Approach) ----------------------------------------------
+
+binarymodels$POPULAR_binaryRatingMatrix$parameters
+
+binarymodelPOP = Recommender(data = train_binary, method = "POPULAR")
+
+binaryrecPOP = predict(object = binarymodelPOP, 
+                       newdata = test_binary,  n = ntop)
+
+#Recommendations for the first user:
+recuser1 = binaryrecPOP@items[[1]] # recommendation for the first user
+moviesuser1 = binaryrecPOP@itemLabels[recuser1]
+moviesrecPOP = moviesuser1
+for (i in 1:10){
+  moviesrecPOP[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecPOP
+
+# NO-BINARY APPROACH -----------------------------------------------------
+
+# Prepapre Training and Test data set ------------------------------------
+which_train <- sample(x = c(TRUE, FALSE), 
+                      size = nrow(ratingmat),
+                      replace = TRUE, 
+                      prob = c(0.8, 0.2))
+
+train <- ratingmat[which_train, ]
+test <- ratingmat[!which_train, ]
+
+# IBCF (No-Binary Approach) ----------------------------------------------
+
+nobinarymodels$IBCF_realRatingMatrix$parameters
+
+modelIBCF = Recommender(data = train, method = "IBCF")
+
+recIBCF = predict(object = modelIBCF, newdata = test, n = ntop)
+
+#Recommendations for the first user:
+recuser1 = recIBCF@items[[1]]
+moviesuser1 = recIBCF@itemLabels[recuser1]
+moviesrecIBCF = moviesuser1
+for (i in 1:ntop){
+  moviesrecIBCF[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecIBCF
+
+# UBCF (No-Binary Approach) ----------------------------------------------
+
+nobinarymodels$UBCF_realRatingMatrix$parameters
+
+modelUBCF = Recommender(data = train, method = "UBCF")
+
+recUBCF = predict(object = modelUBCF, newdata = test, n = ntop)
+
+#Recommendations for the first user:
+recuser1 = recUBCF@items[[1]]
+moviesuser1 = recUBCF@itemLabels[recuser1]
+moviesrecUBCF = moviesuser1
+for (i in 1:10){
+  moviesrecUBCF[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecUBCF
+
+# POPULAR (No-Binary Approach) -------------------------------------------
+
+nobinarymodels$POPULAR_realRatingMatrix$parameters
+
+modelPOP = Recommender(data = train, method = "POPULAR")
+
+recPOP = predict(object = modelPOP, newdata = test, n = ntop)
+
+#Recommendations for the first user:
+recuser1 = recPOP@items[[1]]
+moviesuser1 = recPOP@itemLabels[recuser1]
+moviesrecPOP = moviesuser1
+for (i in 1:10){
+  moviesrecPOP[i] = as.character(
+    subset(movies, movies$movieid == moviesuser1[i])$moviename)
+}
+moviesrecPOP
+
+# SAVE MODELS AND RECOMMENDATIONS ----------------------------------------
+
+save(binarymodels, train_binary, test_binary, binaryratingmat, 
+     binarymodelIBCF, binarymodelUBCF, binarymodelPOP, binaryrecIBCF, 
+     binaryrecUBCF, binaryrecPOP, ntop, nobinarymodels,train, test, 
+     ratingmat, modelIBCF, modelUBCF, modelPOP, recIBCF, recUBCF, recPOP,
+     file = "data/models-recommendations.rdata")
+
+# ASSOCIATION RULES (Binary Approach) --------------------------------------------
+
 # trainsetAR = train_set[, -c(2,3,5,6,7)]
 # trainsetAR = dcast(test_set, userid~movieid, value.var="rating", na.rm=FALSE)
 # bm = as(as.matrix(trainsetAR), "realRatingMatrix")
@@ -329,52 +485,29 @@ binary.models$POPULAR_binaryRatingMatrix$parameters
 # users = binarize(users, minRating = 0.5)
 # predicted.ar = predict(rec.ar, users, 2)
 
-# UB COLLABORATIVE FILTERING ---------------------------------------------------
+binary.models$AR_binaryRatingMatrix$parameters
 
-trainUBCF = train_set[, -c(2,3,5,7)]
-trainUBCF = dcast(trainUBCF, userid~movieid, value.var="rating", na.rm=TRUE)
-bm = as(as.matrix(trainsetAR), "realRatingMatrix")
-bm = binarize(bm, minRating = 0.5)
+flixster.sample.ar = select(flixster.sample, c(userid, movieid))
 
+#ratingmat = dcast(flixster.sample, userid~movieid , value.var="rating", na.rm=FALSE)
 
+#ratingmat <- dcast(flixster.sample.ar, userid~movieid, fun.aggregate = count())
 
-modelUBCF = Recommender(rmb, method = "UBCF")
-getModel(modelUBCF)
+ratingmat <- as.matrix(flixster.sample)
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingmat <- as(ratingmat, "realRatingMatrix")
+#Create a binary rating matrix
+ratingmat <- binarize(ratingmat, minRating = 0.5)
 
-user.id = test_set$userid[1]
-users = as.matrix(test_set[test_set$userid == user.id,])
-users = as(users, "realRatingMatrix")
-users = binarize(users, minRating = 0.5)
+which_train <- sample(x = c(TRUE, FALSE), 
+                      size = nrow(ratingmat),
+                      replace = TRUE, 
+                      prob = c(0.8, 0.2))
 
-recUBCF = predict(modelUBCF, test_set, 2)
+train <- ratingmat[which_train, ]
+test <- ratingmat[!which_train, ]
 
-
-
-
-
-rec.ibcf = Recommender(rmb, method = "IBCF")
-getModel(rec.ibcf)
-
-rec.pop = Recommender(rmb, method = "POPULAR")
-getModel(rec.pop)
-
-save(rec.ar, rec.ibcf, rec.pop, rec.ubcf, rm, rmb, train_set, test_set, file = "Scenario-SmallSample.RData")
-
-rec.ubcf = Recommender(rmb, method = "UBCF", param)
-getModel(rec.ubcf)
-
-rec.ibcf = Recommender(rmb, method = "IBCF")
-getModel(rec.ibcf)
-
-#IBCF Analisys
-modelIBCF <- getModel(rec.ibcf)
-class(modelIBCF$sim) # this contains a similarity matrix
-dim(modelIBCF$sim)
-
-rowsums <- rowSums(modelIBCF$sim > 0)
-table(rowsums)
-colsums <- colSums(modelIBCF$sim > 0)
-qplot(colsums) + stat_bin(binwidth = 1) + ggtitle("Distribution of the column count")
-
-top.items <- 40
-image(modelIBCF$sim[1:top.items, 1:top.items], main = paste("Heatmap of the first", top.items, "rows and columns"))
+modelAR = Recommender(data = train, method = "AR", param=list(confidence=0.2))
+getModel(modelAR)
+rules <- getModel(modelAR)$rule_base
+inspect(rules)
