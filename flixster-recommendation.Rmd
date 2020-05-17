@@ -125,19 +125,22 @@ The platform allowed users to learn about films, to watch trailers, to share the
 The company was bought by Fandango in 2016, and the website was shut down in February 2018 in the USA, and October 2019 internationally. 
 
 ```{r data, echo= F, error= F, warning= F}
-movies.orig= read.delim("../data/movie-names.txt")
+movies.path= file("../data/movie-names.txt")
+profiles.path= file("../data/profile.txt")
+ratings.path= file("../data/ratings.timed.txt")
+
+movies.orig= read.delim(movies.path)
 profiles.orig= read.csv(
-  "../data/profile.txt",
+  profiles.path,
   skipNul= T,
   na.strings= c("N/A", "")
 )
 ratings.orig= read.delim(
-  "../data/ratings.timed.txt",
+  ratings.path,
   sep= "\t",
-  skipNul= T,
+  skipNul= T, # skip NULL values
   col.names= c("userid", "movieid", "rating", "date")
 )
-
 ```
 
 The data set used in this study was provided by the Flisxter website, and it can still be found online.^[https://sites.google.com/view/mohsenjamali/flixter-data-set]
@@ -654,20 +657,21 @@ profiles= profiles %>%
 We then created two variables, `mean_ratings` and `total_ratings`, respectively corresponding to the average rating by each user and total number of ratings per user.
 Those features were added to the `profiles` tibble.
 
-```{r}
+```{r echo= T, results= "hide"}
 user.ratings= ratings %>%
   group_by(userid) %>%
   summarise(
-    mean_ratings= mean(rating),
-    total_ratings= n()
+    mean.ratings.user= mean(rating),
+    total.ratings.user= n()
   )
 # join user.ratings with profiles
-profiles= left_join(profiles, user.ratings, by= "userid")
-## replace NA values in `mean_ratings` and `total_ratings` by 0
-profiles= profiles %>%
-  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
-  mutate(total_ratings= replace_na(total_ratings, 0))
-rm(user.ratings)
+profiles.inner= profiles %>% 
+  inner_join(user.ratings, by= "userid")
+```
+
+```{r eval= F}
+sum(apply(profiles.inner, 1, anyNA)) # 0 NAs
+ save(profiles.inner, file= "../data/profiles.inner.rdata")
 ```
 
 A similar approach was used with the `movies` tibble, where two new columns were created containing the average rating per film (`mean_rating`) and the total number of ratings each movie got (`total_rating`).
@@ -676,28 +680,69 @@ A similar approach was used with the `movies` tibble, where two new columns were
 movie.ratings= ratings %>%
   group_by(movieid) %>%
   summarise(
-    mean_ratings= mean(rating),
-    total_ratings= n()
+    mean.ratings.movie= mean(rating),
+    total.ratings.movie= n()
   )
 ## join movie.ratings with movies
-movies= left_join(movies, movie.ratings, by= "movieid")
-## replace NA values in `mean_ratings` and `total_ratings` with 0
-movies= movies %>%
-  mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
-  mutate(total_ratings= replace_na(total_ratings, 0))
-rm(movie.ratings)
+movies.inner= movies %>% 
+  inner_join(movie.ratings, by= "movieid")
 ```
 
-Finally, we joined the three tables into a single tibble named "flixster".
+```{r eval= F}
+sum(apply(movies.inner, 1, anyNA))
+save(movies.inner, file= "../data/movies.inner.rdata")
+```
+
+Finally, we joined the three tables, in sequence, into a single tibble named "flixster".
+In a general film recomender system, we would use *left joins* during this step, because users without ratings would still be eligible for recommendations based not on their rating history, but on similar user profiles (history of views, for example).
+However, in the case at hands, the only record we have of users's activity is their rating history.
+When it does not exist, *i.e.*, when a user has not made any rating, the instance will be useless for predictions.
+The same reasoning applies for the films: if a movie has not been rated, it will be pointless for predictions.
+
+Therefore, we opted for inner joins, keeping only the common values between the tables, thus eliminating users and films without any rating.
+
+Three tibbles were created: one containing all columns (`flixster`), a smaller version containing the variables `userid`, `gender`, `age`, `movieid`, `moviename`, `rating`, and `age` (`flixster.small`), and a tiny version, containing the features `userid`, `movieid`, `rating`, and `date` (`flixster.tiny`).
 The `ratings` and `profiles` tibbles were joined using the `userid` variable, to which the `movies` tibble was joined using the `movied` feature.
 
 ```{r}
-flixster= ratings %>%
-  left_join(profiles, by= "userid") %>%
-  left_join(movies, by= "movieid")
+flixster.inner= ratings %>% 
+  inner_join(profiles.inner, by= "userid") %>% 
+  inner_join(movies.inner, by= "movieid")
+
+flixster= flixster.inner %>%
+  select(
+    userid, gender, age, total.ratings.user, mean.ratings.user,
+    movieid, moviename, rating, date, mean.ratings.movie, total.ratings.movie
+  )
+
+flixster.small= flixster %>% 
+  select(
+    userid, gender, age,
+    movieid, moviename,
+    rating, date
+  )
+
+flixster.tiny= flixster %>% 
+  select(
+    userid,
+    movieid,
+    rating,
+    date
+  )
+```
+
+```{r eval= F}
+sum(apply(flixster, 1, anyNA)) # 0 NAs, 6,131,346 rows
+sum(apply(flixster.small, 1, anyNA)) # 0 NAs
+sum(apply(flixster.tiny, 1, anyNA)) # 0 NAs
+
+save(flixster, file= "../data/flixster.rdata")
+save(flixster.small, file= "../data/flixster.small.rdata")
+save(flixster.tiny, file= "../data/flixster.tiny.rdata")
 
 remove(movies, profiles, ratings)
 ```
+
 
 A preview of the `flixster` tibble is shown below.
 ```{r}
@@ -705,6 +750,52 @@ flixster
 ```
 
 
+## Data exploration
+The `flixster` tibble contains $\num{108779}$ unique users, who have rated at least one film.
+The majority of the users rated just some films---$68.3\,\%$ of the users rated up to 10 films---while a small number of users rated over $\num{1000}$ movies---995 users in total, corresponding to approximately $0.9\,\%$ of the total users.
+
+```{r eval= F}
+users.less.10.ratings= flixster[flixster$total.ratings.user <= 10, ] %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  nrow()
+
+users.less.10.ratings / length(unique(flixster$userid))
+
+users.more.1000.ratings= flixster[flixster$total.ratings.user >= 1000, ] %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  nrow()
+
+users.more.1000.ratings / length(unique(flixster$userid))
+```
+
+```{r}
+flixster %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  arrange(n) %>% 
+  head()
+```
+
+Figure \@ref(fig:users-ratings) depicts the histogram of the number of ratings per user.
+
+```{r users-ratings, fig.align= "center", fig.cap= "\\label{users-ratings}Histogram of the number of ratings. Approximatelly 68.3% of the users rated 10 films or less."}
+flixster %>%
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+ggplot() +
+  geom_histogram(
+    aes(n),
+    color= "white",
+    binwidth= 0.2
+  ) +
+  scale_x_log10() + 
+  ggtitle("Distribution of ratings per users") + 
+  xlab("Number of ratings") +
+  ylab("Number of users") + 
+  theme_bw()
+```
 
 
 
@@ -730,19 +821,6 @@ train_set <- rbind(train_set, removed)
 rm(test_index, temp, flixster, removed)
 
 ```
-
-## Data Exploration
-
-Before start building the model, we need to understand the structure of the data, the distribution of variables and the relationship of the predictors. This information will help build a better model.
-
-### Profile Data Set
-
-
-
-
-
-
-
 
 
 

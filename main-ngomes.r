@@ -32,18 +32,24 @@ getmode= function(arr) {
 
 
 # SETUP -------------------------------------------------------------------
-movies.orig= read.delim("../data/movie-names.txt")
+movies.path= file("../data/movie-names.txt")
+profiles.path= file("../data/profile.txt")
+ratings.path= file("../data/ratings.timed.txt")
+
+movies.orig= read.delim(movies.path)
 profiles.orig= read.csv(
-  "../data/profile.txt",
+  profiles.path,
   skipNul= T,
   na.strings= c("N/A", "")
 )
 ratings.orig= read.delim(
-  "../data/ratings.timed.txt",
+  ratings.path,
   sep= "\t",
   skipNul= T, # skip NULL values
   col.names= c("userid", "movieid", "rating", "date")
 )
+
+on.exit(close(movies.path, profiles.path, ratings.path))
 
 ## working data frames
 movies.raw= data.frame(movies.orig)
@@ -134,6 +140,11 @@ boxplot(age,
 )
 axis(2, las= 2)
 
+### remove outliers
+age.out= boxplot.stats(age, coef= 3.9)$out
+age.no.out.idx= !(age %in% age.out)
+age.no.out= age[age.no.out.idx]
+summary(age.no.out) # max= 71 (99.5% of values)
 ggplot(data.frame(age= age.no.out)) +
   geom_histogram(
     aes(x= age),
@@ -145,11 +156,6 @@ ggplot(data.frame(age= age.no.out)) +
   ) +
   theme_bw()
 
-### remove outliers
-age.out= boxplot.stats(age, coef= 4)$out
-age.no.out.idx= !(age %in% age.out)
-age.no.out= age[age.no.out.idx]
-summary(age.no.out) # max= 71 (99.5% of values)
 hist(age.no.out,
   breaks= seq(round(min(age.no.out)) - 1, round(max(age.no.out)) + 1, by= 1),
   xlab= "Age (yrs)",
@@ -167,11 +173,15 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ## the distribution is right skewed, as expected (Flixster customers are
 ## typically from young generations).
 
+#save(age, file= "../data/age.rdata")
+#load("../data/age.rdata")
+#save(age.no.out, file= "../data/age.no.out.rdata")
+#load("../data/age.no.out.rdata")
+
+# memberfor ---------------------------------------------------------------
 ## correct wrong dates
 ## correct all wrong dates, i.e., dates before 2006-01-20 (Flixster's founding
 ##  date)
-
-# memberfor ---------------------------------------------------------------
 date.flixster= as.Date("2006-01-20")
 idx.memberfor.wrong= which(profiles$memberfor < date.flixster) # 57722
 profiles$memberfor[idx.memberfor.wrong]= date.flixster
@@ -182,17 +192,18 @@ idx.nas.memberfor= which(is.na(memberfor)) # 203
 uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
 # fill in NAs in memberfor with earliest rating date
 # join profiles and ratings tables
-#users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
-#for (i in 1:nrow(users.ratings)) {
-#  if (is.na(users.ratings$memberfor[i])) {
-#    users.ratings$memberfor[i]= users.ratings$date[i]
-#  }
-#}
+users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
+for (i in 1:nrow(users.ratings)) {
+  if (is.na(users.ratings$memberfor[i])) {
+    users.ratings$memberfor[i]= users.ratings$date[i]
+  }
+}
 #write.csv(users.ratings, file= '../data/users-ratings.csv')
 #users.ratings= read.csv("../data/users-ratings.csv")
 #summary(as.Date(users.ratings$memberfor)) # min= 2006-01-20
-#memberfor= as.Date(users.ratings$memberfor)
 # write.csv(memberfor, "../data/memberfor.csv")
+memberfor= as.Date(users.ratings$memberfor)
+save(memberfor, file= "../data/memberfor.rdata")
 tmp= read.csv("../data/memberfor.csv")
 memberfor= as.Date(tmp$x)
 summary(memberfor)
@@ -206,9 +217,12 @@ summary(ratings$date[idx.date.wrong]) # min= 1941-12-07
 ratings$date[idx.date.wrong]= date.flixster
 summary(ratings$date) # min= 2006-01-20
 dates= ratings$date
-
+#save(dates, file= "../data/dates.rdata")
+load("../data/dates.rdata")
 
 # gender ------------------------------------------------------------------
+#save(gender, file= "../data/gender.rdata")
+#load("../data/gender.rdata")
 n.gender= length(gender)
 gender.woman= gender[gender == "Female"]
 n.woman= length(gender.woman)
@@ -274,6 +288,7 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ## This variable does not seem to be relevant for any of our analyses, so it
 ## will be discarded.
 
+
 # location ----------------------------------------------------------------
 summary(location) # min= 0; max= 1617.0; NAs= 203
 idx.nas.location= which(is.na(location)) # ~0.02% of all values
@@ -328,6 +343,8 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 summary(movieid.movies) # min= 1; max= 66730
 ## Apparently, there are 66730 movies in the data set; there are no NAs.
 ## This is just the number ID of each movie. No relevant statistics to compute.
+#save(movieid.movies, file= "../data/movieid.movies.rdata")
+#load("../data/movieid.movies.rdata")
 
 # movieid.ratings ---------------------------------------------------------
 summary(movieid.ratings) # min= 1; max= 66730
@@ -337,9 +354,22 @@ hist(movieid.ratings,
   breaks= seq(round(min(movieid.ratings)) - 1, round(max(movieid.ratings)) + 1),
   xlab= "Movie ID (ratings)"
 )
+ggplot(data.frame(x= movieid.ratings)) +
+  geom_histogram(
+    aes(x= x),
+    stat= "count",
+    position= "dodge"
+  ) +
+  labs(x= "Movie ID (ratings)", y= "Total", 
+       title= "Histogram of movieid.ratings"#, 
+  ) +
+  theme_bw()
+
 ## From the histogram, we can see that there are films with more ratings than
 ##  others. In particular, there is a movie with ID greater than 60000 with
 ##  around 35000 ratings.
+#save(movieid.ratings, file= "../data/movieid.ratings.rdata")
+#load("../data/movieid.ratings.rdata")
 
 # rating ------------------------------------------------------------------
 par(mfrow= c(1, 2), oma= c(0, 2, 3, 1))
@@ -360,18 +390,27 @@ axis(2, las= 2)
 ##  The distribution of ratings is left skewed, which is expected in this kind
 ##  of data set, i.e., in a sufficient large data set of films, it is expected
 ##  that most of the ratings will lie above the medium value of the scale.
+#save(rating, file= "../data/rating.rdata")
+#load("../data/rating.rdata")
 
 
 
 # remove unnecessary variables --------------------------------------------
 profiles= select(profiles, -c(lastlogin, location, memberfor))
 
-
 # remove NAs --------------------------------------------------------------
 profiles$gender= gender
 profiles= profiles %>%
   filter(! profiles$age %in% profiles$age[is.na(profiles$age)])
+profiles= profiles %>% 
+  filter(profiles$age %in% age.no.out)
 
+#save(movies, file= "../data/movies.rdata")
+#load("../data/movies.rdata")
+#save(profiles, file= "../data/profiles.rdata")
+#load("../data/profiles.rdata")
+#save(ratings, file= "../data/ratings.rdata")
+#load("../data/ratings.rdata")
 
 # add extra rating columns ------------------------------------------------
 ## mean_ratings: mean value of ratings per user
@@ -379,13 +418,24 @@ profiles= profiles %>%
 user.ratings= ratings %>%
   group_by(userid) %>%
   summarise(
-    mean_ratings= mean(rating),
-    total_ratings= n()
+    mean.ratings.user= mean(rating),
+    total.ratings.user= n()
   )
 ## join user.ratings with profiles
-profiles= left_join(profiles, user.ratings, by= "userid")
-## replace NA values in `mean_ratingr` and `total_ratingsr` by 0
-profiles= profiles %>%
+profiles.left= left_join(profiles, user.ratings, by= "userid")
+
+profiles.inner= profiles %>% 
+  inner_join(user.ratings, by= "userid")
+sum(apply(profiles.inner, 1, anyNA)) # no NAs
+## THIS IS THE JOIN WE WANT TO PERFORM!
+save(profiles.inner, file= "../data/profiles.inner.rdata")
+load("../data/profiles.inner.rdata")
+
+profiles.outer= profiles %>% 
+  full_join(user.ratings, by= "userid")
+
+## replace NA values in `mean_ratings` and `total_ratings` by 0
+profiles.left= profiles.left %>%
   mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
   mutate(total_ratings= replace_na(total_ratings, 0))
 rm(user.ratings)
@@ -395,16 +445,121 @@ rm(user.ratings)
 movie.ratings= ratings %>%
   group_by(movieid) %>%
   summarise(
-    mean_ratings= mean(rating),
-    total_ratings= n()
+    mean.ratings.movie= mean(rating),
+    total.ratings.movie= n()
   )
 ## join movie.ratings with movies
-movies= left_join(movies, movie.ratings, by= "movieid")
+movies.left= left_join(movies, movie.ratings, by= "movieid")
+
+movies.inner= movies %>% 
+  inner_join(movie.ratings, by= "movieid")
+## THIS IS THE JOIN WE WANT TO PERFORM!
+save(movies.inner, file= "../data/movies.inner.rdata")
+load("../data/movies.inner.rdata")
+
 ## replace NA values in `mean_ratings` and `total_ratings` with 0
 movies= movies %>%
   mutate(mean_ratings= replace_na(mean_ratings, 0)) %>% 
   mutate(total_ratings= replace_na(total_ratings, 0))
 rm(movie.ratings)
+
+## join movies, profiles, and ratings into flixster tibbles
+flixster.inner= ratings %>% 
+  inner_join(profiles.inner, by= "userid") %>% 
+  inner_join(movies.inner, by= "movieid")
+sum(apply(flixster.inner, 1, anyNA)) # no NAs, 6,131,346 rows
+## THIS IS THE JOIN WE WANT TO PERFORM!
+save(flixster.inner, file= "../data/flixster.inner.rdata")
+load("../data/flixster.inner.rdata")
+
+flixster.left= ratings %>%
+  left_join(profiles, by= "userid") %>%
+  left_join(movies, by= "movieid")
+# 8140604 NAs, 8196077 rows
+
+flixster.full= ratings %>% 
+  full_join(profiles, by= "userid") %>% 
+  full_join(movies, by= "movieid")
+# 12093916 NAs, 8851973 rows
+
+#flixster= flixster.inner %>% 
+#  rename(
+#    mean_ratings_user= mean_ratings.x,
+#    mean_ratings_movie= mean_ratings.y,
+#    total_ratings_user= total_ratings.x,
+#    total_ratings_movie= total_ratings.y 
+#  )
+
+flixster= flixster.inner %>%
+  select(
+    userid, gender, age, total.ratings.user, mean.ratings.user,
+    movieid, moviename, rating, date, mean.ratings.movie, total.ratings.movie
+  )
+save(flixster, file= "../data/flixster.rdata")
+load("../data/flixster.rdata")
+
+flixster.tiny= flixster %>% 
+  select(
+    userid,
+    movieid,
+    rating,
+    date
+  )
+sum(apply(flixster.tiny, 1, anyNA)) # 0 NAs
+save(flixster.tiny, file= "../data/flixster.tiny.rdata")
+load("../data/flixster.tiny.rdata")
+
+flixster.small= flixster %>% 
+  select(
+    userid, gender, age,
+    movieid, moviename,
+    rating, date
+  )
+sum(apply(flixster.small, 1, anyNA)) # 0 NAs
+save(flixster.small, file= "../data/flixster.small.rdata")
+load("../data/flixster.small.rdata")
+
+#remove(movies, profiles, ratings)
+
+
+# data exploration --------------------------------------------------------
+# distribution of ratings per users
+users= length(unique(flixster$userid))
+
+flixster %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  arrange(n) %>% 
+  head()
+
+users.less.10.ratings= flixster[flixster$total.ratings.user <= 10, ] %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  nrow()
+
+users.less.10.ratings / length(unique(flixster$userid))
+
+users.more.1000.ratings= flixster[flixster$total.ratings.user >= 1000, ] %>% 
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+  nrow()
+
+users.more.1000.ratings / length(unique(flixster$userid))
+
+flixster %>%
+  group_by(userid) %>% 
+  summarise(n= n()) %>% 
+ggplot() +
+  geom_histogram(
+    aes(n),
+    color= "white",
+    binwidth= 0.2
+  ) +
+  scale_x_log10() + 
+  ggtitle("Distribution of ratings per users") + 
+  xlab("Number of ratings") +
+  ylab("Number of users") + 
+  theme_bw()
 
 
 
