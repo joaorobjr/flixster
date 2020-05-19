@@ -1,0 +1,78 @@
+ibcf bin
+--------
+"Harry Potter and the Chamber of Secrets"
+"Harry Potter and the Prisoner of Azkaban"
+"Ice Age"
+"Shrek"
+"Spider-Man 2"
+"The Lion King"
+"The Lord of the Rings - The Two Towers"
+"The Lord of the Rings - The Fellowship of the Ring"
+"Monsters, Inc."
+"Scary Movie 3" 
+
+ubcf bin
+--------
+"Rush Hour"
+"Disneys Aladdin"
+"Pirates of the Caribbean: Dead Mans Chest"
+"300"
+"Ghost Busters (Ghostbusters)"
+"Ice Age 2: The Meltdown"
+"Dirty Dancing"
+"The Nutty Professor"
+"American Pie 2"
+"Ice Age"
+
+popular bin
+-----------
+"Shrek"
+"Pirates of the Caribbean: Dead Mans Chest"         
+"Ice Age"
+"The Lion King"
+"Spider-Man 2"
+"The Lord of the Rings - The Fellowship of the Ring"
+"Men in Black"
+"Harry Potter and the Prisoner of Azkaban"
+"The Mask"
+"Harry Potter and the Chamber of Secrets" 
+
+
+ibcf no-bin
+-----------
+"*batteries not included"
+"88 Minutes"
+"8 Seconds"
+"A Nightmare on Elm Street 2 - Freddys Revenge"
+"A Walk in the Clouds"
+"Above the Law"
+"Air Bud Spikes Back"
+"Adaptation"
+"Adventures in Babysitting"
+"Aliens vs. Predator: Requiem (AVP 2)"
+
+ubcf no-bin
+-----------
+"101 Dalmatians"
+"102 Dalmatians"
+"12 Angry Men (Twelve Angry Men)"
+"15 Minutes"
+"21 Grams"
+"28 Weeks Later..."
+"3 Ninjas"
+"*batteries not included"
+"101 Dalmatians (One Hundred and One Dalmatians)"
+"12 Rounds"
+
+popular no-bin
+--------------
+"Charlottes Web (1973)"
+"Hana"
+"13 Ghosts (1960)"
+"Gone in 60 Seconds (1974)"
+"Inglorious Bastards (Quel maledetto treno blindato) (Deadly Mission) (Counterfeit Commandos)"
+"Casper (1995)"
+"Reindeer Games (Deception)"
+"Iron Man (Ironman)"
+"Beauty and the Beast (1992)"
+"Barb Wire"
