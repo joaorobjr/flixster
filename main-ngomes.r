@@ -13,9 +13,12 @@ require(arulesViz)
 require(dplyr)
 require(e1071)
 require(forcats)
+require(funModeling)
 require(igraph)
+require(lubridate)
 require(plotrix)
 require(recommenderlab)
+require(reshape2)
 require(stringr)
 require(text2vec)
 require(tidyverse)
@@ -30,47 +33,6 @@ getmode= function(arr) {
   uniq.vals[which.max(tabulate(match(arr, uniq.vals)))]
 }
 
-#' Split data set into train and test sets
-#' @author Nuno R. C. Gomes <nunorcgomes@gmail.com> (2020/03/18)
-#' @param dataset A data set
-#' @param target Target variable (name or index)
-#' @param frac Proportion of data set for training
-#' @param seed A seed for the sampling; Default: 42
-#' @return Vector \code{tts} of mode "list"
-#' @examples
-#' train_test_split(pid, "diabetes", 0.8)
-train_test_split= function(dataset, target, frac, seed= 42) {
-  set.seed(seed)
-  nr= nrow(dataset)
-  seqnr= 1:nr
-  # target variable and index
-  if (typeof(target) == "character") {
-    target.idx= which(colnames(dataset) == target)
-  } else if (typeof(target) == "double") {
-    target.idx= target
-    target= colnames(dataset[target.idx])
-  } else {
-    stop("Invalid `target` argument.")
-  }
-  
-  # train and test sets
-  train.idx= sample(seqnr, frac*nr)
-  test.idx=  setdiff(seqnr, train.idx)
-  X.train=   dataset[train.idx, -target.idx]
-  y.train=   dataset[train.idx,  target.idx]
-  X.test=    dataset[test.idx,  -target.idx]
-  y.test=    dataset[test.idx,   target.idx]
-  
-  # list of data frames
-  tts= vector('list', 4)
-  names(tts)= c('X_train', 'y_train', 'X_test', 'y_test')
-  tts[[1]]= X.train
-  tts[[2]]= y.train
-  tts[[3]]= X.test
-  tts[[4]]= y.test
-  
-  return(tts)
-}
 
 # SETUP -------------------------------------------------------------------
 movies.path= file("../data/movie-names.txt")
@@ -125,6 +87,9 @@ ratings= tbl_df(ratings.raw)
 ## remove profileview from profiles tibble
 profiles= profiles %>% select(-"profileview")
 
+save(movies, file= "../data/movies.raw.rdata")
+save(profiles, file= "../data/profiles.raw.rdata")
+save(ratings, file= "../data/ratings.raw.rdata")
 
 # VARIABLES ---------------------------------------------------------------
 age= profiles$age
@@ -214,10 +179,10 @@ mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ## the distribution is right skewed, as expected (Flixster customers are
 ## typically from young generations).
 
-#save(age, file= "../data/age.rdata")
-#load("../data/age.rdata")
-#save(age.no.out, file= "../data/age.no.out.rdata")
-#load("../data/age.no.out.rdata")
+save(age, file= "../data/age.rdata")
+load("../data/age.rdata")
+save(age.no.out, file= "../data/age.no.out.rdata")
+load("../data/age.no.out.rdata")
 
 # memberfor ---------------------------------------------------------------
 ## correct wrong dates
@@ -233,21 +198,17 @@ idx.nas.memberfor= which(is.na(memberfor)) # 203
 uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
 # fill in NAs in memberfor with earliest rating date
 # join profiles and ratings tables
-users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
-for (i in 1:nrow(users.ratings)) {
-  if (is.na(users.ratings$memberfor[i])) {
-    users.ratings$memberfor[i]= users.ratings$date[i]
-  }
-}
-#write.csv(users.ratings, file= '../data/users-ratings.csv')
-#users.ratings= read.csv("../data/users-ratings.csv")
-#summary(as.Date(users.ratings$memberfor)) # min= 2006-01-20
-# write.csv(memberfor, "../data/memberfor.csv")
-memberfor= as.Date(users.ratings$memberfor)
+usrats= ratings %>% left_join(profiles, by= "userid")
+usrats$memberfor[is.na(usrats$memberfor)]= date.flixster
+usrats= usrats %>% group_by(userid) %>% arrange(date) %>% slice(1L)
+idcs= which(usrats$date < usrats$memberfor)
+usrats$memberfor[idcs]= usrats$date[idcs]
+memberfor= usrats$memberfor
+member.date= tibble(userid= usrats$userid, memberfor= usrats$memberfor)
+
 save(memberfor, file= "../data/memberfor.rdata")
-tmp= read.csv("../data/memberfor.csv")
-memberfor= as.Date(tmp$x)
-summary(memberfor)
+save(usrats, file= "../data/usrats.rdata")
+save(member.date, file= "../data/member.date.rdata")
 
 # dates -------------------------------------------------------------------
 summary(dates) # min= 1941-12-07
@@ -258,7 +219,7 @@ summary(ratings$date[idx.date.wrong]) # min= 1941-12-07
 ratings$date[idx.date.wrong]= date.flixster
 summary(ratings$date) # min= 2006-01-20
 dates= ratings$date
-#save(dates, file= "../data/dates.rdata")
+save(dates, file= "../data/dates.rdata")
 load("../data/dates.rdata")
 
 # gender ------------------------------------------------------------------
@@ -286,7 +247,6 @@ pie3D(c(n.woman, n.man, n.other), theta= pi/3,
       col= gender.colours,
       start= pi/4, explode= 0.08)
 mtext("Gender spread", side= 3, line= -4, outer= T, cex= 2)
-# More women (65%) than men (35%) were considered in this study.
 
 # lastlogin ---------------------------------------------------------------
 summary(lastlogin) # min= 0; max= 177278; NAs= 57925
@@ -431,27 +391,30 @@ axis(2, las= 2)
 ##  The distribution of ratings is left skewed, which is expected in this kind
 ##  of data set, i.e., in a sufficient large data set of films, it is expected
 ##  that most of the ratings will lie above the medium value of the scale.
-#save(rating, file= "../data/rating.rdata")
-#load("../data/rating.rdata")
+save(rating, file= "../data/rating.rdata")
+load("../data/rating.rdata")
 
 
 
 # remove unnecessary variables --------------------------------------------
-profiles= select(profiles, -c(lastlogin, location, memberfor))
+profiles= profiles %>%  select(-c(lastlogin, location))
 
 # remove NAs --------------------------------------------------------------
 profiles$gender= gender
+profiles= profiles %>% 
+  filter(profiles$userid %in% member.date$userid)
+profiles$memberfor= memberfor
 profiles= profiles %>%
   filter(! profiles$age %in% profiles$age[is.na(profiles$age)])
 profiles= profiles %>% 
   filter(profiles$age %in% age.no.out)
 
-#save(movies, file= "../data/movies.rdata")
-#load("../data/movies.rdata")
-#save(profiles, file= "../data/profiles.rdata")
-#load("../data/profiles.rdata")
-#save(ratings, file= "../data/ratings.rdata")
-#load("../data/ratings.rdata")
+save(movies, file= "../data/movies.rdata")
+load("../data/movies.rdata")
+save(profiles, file= "../data/profiles.rdata")
+load("../data/profiles.rdata")
+save(ratings, file= "../data/ratings.rdata")
+load("../data/ratings.rdata")
 
 # add extra rating columns ------------------------------------------------
 ## mean_ratings: mean value of ratings per user
@@ -463,6 +426,8 @@ user.ratings= ratings %>%
     total.ratings.user= n()
   )
 
+save(user.ratings, file= "../data/user.ratings.rdata")
+
 ## mean_ratings: mean value of ratings per film
 ## total_ratings: total number of ratings per movie
 movie.ratings= ratings %>%
@@ -471,6 +436,8 @@ movie.ratings= ratings %>%
     mean.ratings.movie= mean(rating),
     total.ratings.movie= n()
   )
+
+save(movie.ratings, file= "../data/movie.ratings.rdata")
 
 # join tibbles ------------------------------------------------------------
 ## join user.ratings with profiles
@@ -498,6 +465,7 @@ movies.left= left_join(movies, movie.ratings, by= "movieid")
 movies.inner= movies %>% 
   inner_join(movie.ratings, by= "movieid")
 ## THIS IS THE JOIN WE WANT TO PERFORM!
+sum(apply(movies.inner, 1, anyNA)) # 0 NAs
 save(movies.inner, file= "../data/movies.inner.rdata")
 load("../data/movies.inner.rdata")
 
@@ -538,7 +506,7 @@ flixster.full= ratings %>%
 
 flixster= flixster.inner %>%
   select(
-    userid, gender, age, total.ratings.user, mean.ratings.user,
+    userid, gender, age, memberfor, total.ratings.user, mean.ratings.user,
     movieid, moviename, rating, date, mean.ratings.movie, total.ratings.movie
   )
 save(flixster, file= "../data/flixster.rdata")
@@ -631,6 +599,17 @@ flixster %>% filter(userid %in% users.samp) %>%
 abline(h= 0:100+0.5, v= 0:100+0.5, col= "grey")
 title("Heatmap of User x Movie")
 
+as.duration(interval(date.flixster, max(flixster$date)))
+## the ratings were collected over a period of ~3.82 years
+
+# popularity: top 20 active users
+flixster %>% 
+  select(userid, gender, age, memberfor, total.ratings.user) %>% 
+  arrange(desc(total.ratings.user)) %>% 
+  unique() %>% 
+  head(10)
+
+
 ## distribution of ratings per movie
 flixster %>% group_by(movieid) %>%
   summarise(n= n()) %>%
@@ -640,6 +619,40 @@ flixster %>% group_by(movieid) %>%
   ggtitle("Distribution of ratings per number of movies") +
   xlab("log10(Number of ratings)") +
   ylab("Number of movies") +
+  theme_bw()
+
+# popularity: top 20 movies
+flixster %>% 
+  select(movieid, moviename, total.ratings.movie) %>% 
+  arrange(desc(total.ratings.movie)) %>% 
+  unique() %>% 
+  head(10)
+
+
+# distribution of rating per year
+flixster %>%
+  mutate(year= year(date)) %>%
+  ggplot(aes(x= year)) +
+  geom_histogram(color= "white", binwidth= 1) + 
+  ggtitle("Rating distribution per year") +
+  xlab("Year") +
+  ylab("Number of ratings") +
+  theme_bw()
+
+# distribution of rating per month
+flixster %>%
+  mutate(month= month(date, label= T)) %>% 
+  mutate(year= year(date)) %>% 
+  ggplot(aes(x= month, fill= year)) +
+  geom_histogram(
+    stat= "count",
+    binwidth= 0.2,
+    color= "white",
+    position= "dodge"
+  ) + 
+  ggtitle("Rating distribution per month") +
+  xlab("Month") +
+  ylab("Number of ratings") +
   theme_bw()
 
 # distribution of ratings per date
@@ -652,6 +665,7 @@ flixster %>%
   xlab("Date") +
   ylab("Number of ratings") +
   theme_bw()
+
 
 # table of dates with ratings
 flixster %>%
@@ -678,19 +692,277 @@ data.rating %>%
   theme_bw()
 
 
+# samples of data sets ----------------------------------------------------
+## get most relevant instances, based on user activity and number of ratings per
+## movie
+flixster.sample= flixster %>%
+  filter(total.ratings.movie > 410, total.ratings.user > 410)
+
+flixster.sample.small= flixster.sample %>% 
+  select(userid, gender, age, movieid, moviename, rating, date)
+
+flixster.sample.tiny= flixster.sample %>% 
+  select(userid, movieid, rating, date)
+
+save(flixster.sample, file= "../data/flixster.sample.rdata")
+save(flixster.sample.small, file= "../data/flixster.sample.small.rdata")
+save(flixster.sample.tiny, file= "../data/flixster.sample.tiny.rdata")
+
+## select most active users (with more than 10 ratings) and most relevant films
+## (with more than 100 ratings)
+flixster.u10m100= flixster %>% 
+  filter(total.ratings.user > 10, total.ratings.movie > 100)
+
+flixster.u10m100.small= flixster.u10m100 %>% 
+  select(userid, gender, age, movieid, moviename, rating, date)
+
+flixster.u10m100.tiny= flixster.u10m100 %>% 
+  select(userid, movieid, rating, date)
+
+save(flixster.u10m100, file= "../data/flixster.u10m100.rdata")
+save(flixster.u10m100.small, file= "../data/flixster.u10m100.small.rdata")
+save(flixster.u10m100.tiny, file= "../data/flixster.u10m100.tiny.rdata")
+
+
+flixster.u50m500= flixster %>% 
+  filter(total.ratings.user > 50, total.ratings.movie > 500)
+# tibble: 4,752,926 x 12
+save(flixster.u50m500, file= "../data/flixster.u50m500.rdata")
+load("../data/flixster.u50m500.rdata")
+
+
+# build recommendation models ---------------------------------------------
+rec.mod.bin= recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
+rec.mod= recommenderRegistry$get_entries(dataType= "realRatingMatrix")
+
+
+# rating matrices ---------------------------------------------------------
+FLIXST= flixster.u10m100
+FLIXST= flixster.u50m500
+
+ratingmat= dcast(
+  FLIXST,
+  userid ~ movieid,
+  value.var= "rating"
+  )
+ratingmat= as.matrix(ratingmat)
+
+# convert rating matrix to recommenderlab sparse matrix
+ratingmat= as(ratingmat, "realRatingMatrix")
+
+# create binary rating matrix
+ratingmat.bin= binarize(ratingmat, minRating= 0.5)
+ntop= 10 # number of top movies to recommend to each user
+
+save(ratingmat, file= "../data/ratingmat.rdata")
+save(ratingmat.bin, file= "../data/ratingmat.bin.rdata")
+
 # train/test split --------------------------------------------------------
 ## train/test split
-tts.tiny= train_test_split(flixster.tiny, "rating", 0.7)
-x.train.tiny= tts.tiny$X_train
-y.train.tiny= tts.tiny$y_train
-x.test.tiny=  tts.tiny$X_test
-y.test.tiny=  tts.tiny$y_test
+#tts.tiny= train_test_split(flixster.tiny, "rating", 0.7)
+#x.train.tiny= tts.tiny$X_train
+#y.train.tiny= tts.tiny$y_train
+#x.test.tiny=  tts.tiny$X_test
+#y.test.tiny=  tts.tiny$y_test
+#
+#set.seed(42)
+#x.train= sample_n(x.train.tiny, 100)
+#y.train= sample_n(y.train.tiny, 100)
+#x.test= sample_n(x.test.tiny, 30)
+#y.test= sample_n(y.test.tiny, 30)
 
 set.seed(42)
-x.train= sample_n(x.train.tiny, 100)
-y.train= sample_n(y.train.tiny, 100)
-x.test= sample_n(x.test.tiny, 30)
-y.test= sample_n(y.test.tiny, 30)
+idx_train_test= sample(
+  c(TRUE, FALSE),
+  size= nrow(ratingmat),
+  replace= T,
+  prob= c(0.7, 0.3)
+)
+
+train.nobin= ratingmat[  idx_train_test, ]
+test.nobin=  ratingmat[! idx_train_test, ]
+
+train.bin= ratingmat.bin[  idx_train_test, ]
+test.bin=  ratingmat.bin[! idx_train_test, ]
+
+save(train.nobin, file= "../data/train.nobin.rdata")
+save(test.nobin, file= "../data/test.nobin.rdata")
+save(train.bin, file= "../data/train.bin.rdata")
+save(test.bin, file= "../data/test.bin.rdata")
+
+# ibcf (binary approach) --------------------------------------------------
+## item-based collaborative filtering model
+rec.mod.bin$IBCF_binaryRatingMatrix$parameters
+rec.mod.ibcf.bin= Recommender(data= train.bin, method= "IBCF")
+rec.mod.ibcf.bin.pred= predict(
+  object= rec.mod.ibcf.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ibcf.bin.user.1= rec.mod.ibcf.bin.pred@items[[1]]
+movies.ibcf.bin.user.1= rec.mod.ibcf.bin.pred@itemLabels[rec.ibcf.bin.user.1]
+movies.rec.ibcf.bin= movies.ibcf.bin.user.1
+for (i in 1:ntop) {
+  movies.rec.ibcf.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ibcf.bin.user.1[i])$moviename
+    )
+}
+movies.rec.ibcf.bin
+save(movies.rec.ibcf.bin, file= "../data/movies.rec.ibcf.bin.rdata")
+
+
+# ubcf (binary approach) -------------------------------------------------
+## user-based collaborative filtering model
+rec.mod.bin$UBCF_binaryRatingMatrix$parameters
+rec.mod.ubcf.bin= Recommender(data= train.bin, method= "UBCF")
+rec.mod.ubcf.bin.pred= predict(
+  object= rec.mod.ubcf.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ubcf.bin.user.1= rec.mod.ubcf.bin.pred@items[[1]]
+movies.ubcf.bin.user.1= rec.mod.ubcf.bin.pred@itemLabels[rec.ubcf.bin.user.1]
+movies.rec.ubcf.bin= movies.ubcf.bin.user.1
+for (i in 1:ntop) {
+  movies.rec.ubcf.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ubcf.bin.user.1[i])$moviename
+    )
+}
+movies.rec.ubcf.bin
+save(movies.rec.ubcf.bin, file= "../data/movies.rec.ubcf.bin.rdata")
+
+
+# popular (binary approach) ----------------------------------------------
+## popular recommendation method recommends the popular films to users;
+## the popularity of a film is determined by the number or ratings received
+rec.mod.bin$POPULAR_binaryRatingMatrix$parameters
+rec.mod.pop.bin= Recommender(data= train.bin, method= "POPULAR")
+rec.mod.pop.bin.pred= predict(
+  object= rec.mod.pop.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user:
+rec.pop.bin.user.1= rec.mod.pop.bin.pred@items[[1]]
+movies.pop.bin.user.1= rec.mod.pop.bin.pred@itemLabels[rec.pop.bin.user.1]
+movies.rec.pop.bin= movies.pop.bin.user.1
+for (i in 1:ntop){
+  movies.rec.pop.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.pop.bin.user.1[i])$moviename
+    )
+}
+movies.rec.pop.bin
+save(movies.rec.pop.bin, file= "../data/movies.rec.pop.bin.rdata")
+
+
+# ibcf (non-binary approach) ---------------------------------------------
+## Item-based collaborative filtering, a recommender method with non-
+## normalised data, with distance between items computed using cosine
+## similarity.
+rec.mod$IBCF_realRatingMatrix$parameters
+rec.mod.ibcf= Recommender(data= train.nobin, method= "IBCF")
+rec.mod.ibcf.pred= predict(
+  object= rec.mod.ibcf,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recomendations for the first user
+rec.ibcf.user.1= rec.mod.ibcf.pred@items[[1]]
+movies.ibcf.user.1= rec.mod.ibcf.pred@itemLabels[rec.ibcf.user.1]
+movies.rec.ibcf= movies.ibcf.user.1
+for (i in 1:ntop) {
+  movies.rec.ibcf[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ibcf.user.1[i])$moviename
+    )
+}
+movies.rec.ibcf
+save(movies.rec.ibcf, file= "../data/movies.rec.ibcf.rdata")
+
+
+# ubcf (non-binary approach) -------------------------------------------------
+## user-based collaborative filtering model
+rec.mod$UBCF_realRatingMatrix$parameters
+rec.mod.ubcf= Recommender(data= train.nobin, method= "UBCF")
+rec.mod.ubcf.pred= predict(
+  object= rec.mod.ubcf,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ubcf.user.1= rec.mod.ubcf.pred@items[[1]]
+movies.ubcf.user.1= rec.mod.ubcf.pred@itemLabels[rec.ubcf.user.1]
+movies.rec.ubcf= movies.ubcf.user.1
+for (i in 1:ntop) {
+  movies.rec.ubcf[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ubcf.user.1[i])$moviename
+    )
+}
+movies.rec.ubcf
+save(movies.rec.ubcf, file= "../data/movies.rec.ubcf.rdata")
+
+
+
+# popular (non-binary approach) -------------------------------------------
+rec.mod$POPULAR_realRatingMatrix$parameters
+rec.mod.pop= Recommender(data= train.nobin, method= "POPULAR")
+rec.mod.pop.pred= predict(
+  object= rec.mod.pop,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recommendations for the first user:
+rec.pop.user.1= rec.mod.pop.pred@items[[1]]
+movies.pop.user.1= rec.mod.pop.pred@itemLabels[rec.pop.user.1]
+movies.rec.pop= movies.pop.user.1
+for (i in 1:ntop){
+  movies.rec.pop[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.pop.user.1[i])$moviename
+    )
+}
+movies.rec.pop
+save(movies.rec.pop, file= "../data/movies.rec.pop.rdata")
+
+
+# save models and recommendations -----------------------------------------
+save(
+  rec.mod.bin,
+  ratingmat.bin,
+  train.bin, test.bin,
+  rec.mod.ibcf.bin, rec.mod.ibcf.bin.pred, movies.rec.ibcf.bin,
+  rec.mod.ubcf.bin, rec.mod.ubcf.bin.pred, movies.rec.ubcf.bin,
+  rec.mod.pop.bin, rec.mod.pop.bin.pred, movies.rec.pop.bin,
+  file= "../data/recommender-system-binary.rdata"
+)
+
+save(
+  rec.mod,
+  ratingmat,
+  train.nobin, test.nobin,
+  rec.mod.ibcf, rec.mod.ibcf.pred, movies.rec.ibcf,
+  rec.mod.ubcf, rec.mod.ubcf.pred, movies.rec.ubcf,
+  rec.mod.pop, rec.mod.pop.pred, movies.rec.pop,
+  file= "../data/recommender-system-no-binary.rdata"
+)
 
 
 

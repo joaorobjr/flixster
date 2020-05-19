@@ -1,7 +1,7 @@
 ---
 title: "A movies recommender system using Flixster data"
 subtitle: "Practical assignment of Advanced Topics in Data Science/Data Mining II"
-author: "By Robson Teixeira and Nuno Gomes"
+author: "By Nuno Gomes and Robson Teixeira"
 date: "M:DS -- FCUP, 17/05/2020"
 output:
   bookdown::html_document2:
@@ -42,7 +42,17 @@ sansfont: Source Sans Pro
 documentclass: report
 urlcolor: blue
 references:
-  
+- id: lesmeister2019
+  title: Advanced Machine Learning with R
+  author:
+    - family: Lesmeister
+      given: Cory
+    - family: Chinnamgari
+      given: Sunil Kumar
+  publisher: Packt Publishing Ltd.
+  type: book
+  issued:
+    year: 2019
 - id: netflix2009
   title: The Netflix Prize
   URL: https://www.netflixprize.com/
@@ -67,7 +77,7 @@ references:
 ---
 
 ```{r setup, include= F}
-knitr::opts_chunk$set(echo= T)
+knitr::opts_chunk$set(echo= T, warning= F)
 require(arules)
 require(arulesSequences)
 require(arulesViz)
@@ -78,24 +88,14 @@ require(forcats)
 require(funModeling)
 require(Hmisc)
 require(igraph)
+require(lubridate)
 require(plotrix)
 require(recommenderlab)
+require(reshape2)
 require(stringr)
 require(text2vec)
 require(tidyverse)
 require(tm)
-
-#if(!require(tidyverse)) 
-#  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
-#if(!require(funModeling)) 
-#  install.packages("funModeling", repos = "http://cran.us.r-project.org")
-#if(!require(caret)) 
-#  install.packages("caret", repos = "http://cran.us.r-project.org")
-#if(!require(Hmisc)) 
-#  install.packages("Hmisc", repos = "http://cran.us.r-project.org")
-#if(!require(ggplot2)) 
-#  install.packages("ggplot2", repos = "http://cran.us.r-project.org")
-
 
 options(scipen= 999) # turns off scientific notation; to turn it back on, use scipen= 0
 ```
@@ -110,12 +110,13 @@ ADD MAIN RESULTS HERE.
 **Recommender** or **recommendation** systems are a branch of *Web usage mining* that aim at predicting the "preferences" or the "rating" a user would give to an item.
 They are widely used on the Web, mainly in online streaming services, such as YouTube, Amazon, or Netflix (just to name a few), and e-commerce applications (eBay, Amazon, OLX, *etc.*), in order to recommend products and services to the users.
 They serve three important functions: (*i*) to increase the profit of companies, (*ii*) to help users to select specific products within the available offer, by giving them personalised recommendations based on previous interactions, and (*iii*) to predict the rating for a new item.
+Putting it simple, recommendation systems aim at offering the right content to the right customer, at the right time, and through the right channel [@lesmeister2019].
 Companies struggle for customer loyalty on a daily basis, and while doing so, they invest on recommender systems that try to increase the likelihood of purchase, by analysing customers' preferences and past interactions.
 
 The importance of recommender systems on the success of businesses and on company-customer relationships can be inferred from the one million dollar prize that Netflix offered in 2006 to the person or team that could improve their recommendation system by at least $10\,\%$ [@netflix2009].
 The success of companies such as Amazon or platforms like Youtube lies partly in the recommendation and marketing strategies, based on the user preferences.
 
-During this project, we created a film recommendation system using the Flixster data set, while applying the knowledge acquired in the course of Advanced Topics in Data Science/Data Mining II over the second semestre of the Masters in Data Science.
+During this project, we created a film recommendation system using the Flixster data set, based on binary and non binary approaches, and according to the *item-based collaborative filtering* (IBCF), *user-based collaborative filtering* (UBCF), and *popular* methods.
 
 This report is organised as follows: 
 
@@ -448,12 +449,16 @@ mtext(
 mtext(side= 3, line= 1, at= 1, cex= 0.7, "Outliers removed")
 ```
 
-### Dates and Memberfor
-We detected several incorrect dates in the data set, both in the `date` and in `memberfor`, respectively from the `ratings` and the `profiles` tibbles.
-Those dates were either before the founding of Flixster (2006/01/20) or NA values---we detected dates as early as 1900/01/01 for `memberfor` and 1941/12/07 for `dates`, and 203 NAs in `memberfor` (no NAs in `dates`).
+### Dates and Memberfor {#dates-memberfor}
+We detected three types of incorrect dates in the data set, both in the `date` and `memberfor` variables (respectively from the `ratings` and the `profiles` tibbles).
+The first two types corresponded to dates either before the founding of Flixster (2006/01/20) or NA values---we detected dates as early as 1900/01/01 in `memberfor` and 1941/12/07 in `dates`, and 203 NAs in `memberfor` (no NAs in `dates`).
 Regarding the NAs in `memberfor`, we simply removed the corresponding instances, since, on the one hand the total number of NAs was small, corresponding to $0.02\,\%$ of the total number of values, and, on the other hand, there was no way of estimating a reasonable date.
 For the remainder of the wrong dates, we performed imputation, according to the following rules: (*i*) we made `memberfor` equal to the minimum rating date every time the former was after the latter, *i.e.*, when the membership date was after the first rating, and (*ii*) we replaced all dates before 2006/01/20 by Fixster's founding date.
-We ended up with two arrays with dates between 2006/01/20 and 2009/11/17 (`dates` case) and 2009/12/03 (`memberfor` case), with no NAs.
+
+The third type of wrong dates corresponded to dates in `dates` which were earlier than the registration date in Flixster (the date saved in the `memberfor` variable).
+In those cases, we took the earliest date recorded in `dates` as the date for `memberfor`.
+Since there are $\num{147612}$ unique user IDs in the tibble `ratings`, we obtained a "cleaned" `memberfor` variable with that number of dates.
+We ended up with two arrays with dates between 2006/01/20 and 2009/11/17 (`dates` case) or 2009/11/01 (`memberfor` case), with no NAs.
 
 ```{r}
 date.flixster= as.Date("2006-01-20")
@@ -465,26 +470,23 @@ uids.memberfor.nas= profiles$userid[idx.nas.memberfor] # 203
 ```
 
 
-```{r eval= F}
+```{r eval= T}
 # fill in NAs in memberfor with earliest rating date
 # join profiles and ratings tables
-users.ratings= tbl_df(merge(profiles, ratings, by= "userid"))
-for (i in 1:nrow(users.ratings)) {
-  if (is.na(users.ratings$memberfor[i])) {
-    users.ratings$memberfor[i]= users.ratings$date[i]
-  }
-}
-write.csv(users.ratings, file= '../data/users-ratings.csv')
-users.ratings= read.csv("../data/users-ratings.csv")
-memberfor= as.Date(users.ratings$memberfor)
-summary(memberfor)
-write.csv(memberfor, "../data/memberfor.csv")
+usrats= ratings %>% left_join(profiles, by= "userid")
+usrats$memberfor[is.na(usrats$memberfor)]= date.flixster
+usrats= usrats %>% group_by(userid) %>% arrange(date) %>% slice(1L)
+idcs= which(usrats$date < usrats$memberfor)
+usrats$memberfor[idcs]= usrats$date[idcs]
+memberfor= usrats$memberfor
+member.date= tibble(userid= usrats$userid, memberfor= usrats$memberfor)
+```
+``` {r eval= F}
+save(member.date, file= "../data/member.date.rdata")
+save(memberfor, file= "../data/memberfor.rdata")
+save(usrats, file= '../data/usrats.rdata')
 ```
 
-```{r}
-tmp= read.csv("../data/memberfor.csv")
-memberfor= as.Date(tmp$x)
-```
 
 ```{r}
 idx.date.wrong= which(ratings$date < date.flixster) # 2998
@@ -682,18 +684,23 @@ axis(2, las= 2)
 ```
 
 ## Data engineering
-As mentioned previously, the variables `lastlogin`, `location`, and `memberfor`  were not needed for the context this analysis, and so they were removed (the feature `profileview` had already been removed in the preliminary data analysis).
+As mentioned previously, the variables `lastlogin` and `location`  were not needed for the context of this analysis, and so they were removed (the feature `profileview` had already been removed in the preliminary data analysis).
 
 ```{r}
-profiles= select(profiles, -c(lastlogin, location, memberfor))
+profiles= profiles %>%  select(-c(lastlogin, location))
 ```
 
 The `gender` column in `profiles` was replaced by the updated `gender` standalone variable (including the "Other" gender), and only the instances with no NAs in the age were kept.
 At the end, `profiles` was reduced to a $\num{747178} \times 3$ tibble, containing no NAs and with the relevant features `userid`, `gender`, and `age`.
 ```{r}
 profiles$gender= gender
+profiles= profiles %>% 
+  filter(profiles$userid %in% member.date$userid)
+profiles$memberfor= memberfor
 profiles= profiles %>%
   filter(! profiles$age %in% profiles$age[is.na(profiles$age)])
+profiles= profiles %>% 
+  filter(profiles$age %in% age.no.out)
 ```
 
 We then created two variables, `mean_ratings` and `total_ratings`, respectively corresponding to the average rating by each user and total number of ratings per user.
@@ -753,7 +760,7 @@ flixster.inner= ratings %>%
 
 flixster= flixster.inner %>%
   select(
-    userid, gender, age, total.ratings.user, mean.ratings.user,
+    userid, gender, age, memberfor, total.ratings.user, mean.ratings.user,
     movieid, moviename, rating, date, mean.ratings.movie, total.ratings.movie
   )
 
@@ -793,8 +800,8 @@ flixster
 
 
 ## Data exploration
-The `flixster` tibble contains $\num{108779}$ unique users, who have rated at least one film.
-The majority of the users rated just some films---$68.3\,\%$ of the users rated up to 10 films---while a small number of users rated over $\num{1000}$ movies---995 users in total, corresponding to approximately $0.9\,\%$ of the total users.
+The `flixster` tibble contains $\num{108779}$ unique users, who have rated at least one film, during a time span of almost four years, between the 20^{th} January 2006 and the 17^{th} of November 2009.
+The majority of the users rated only a few films---$68.3\,\%$ of the users rated up to 10 films---while a small number of users rated over $\num{1000}$ movies---995 users in total, corresponding to approximately $0.9\,\%$ of the total users.
 
 ```{r eval= F}
 users.less.10.ratings= flixster[flixster$total.ratings.user <= 10, ] %>% 
@@ -821,6 +828,7 @@ flixster %>%
 ```
 
 Figure \@ref(fig:users-ratings) depicts the histogram of the number of ratings per user.
+Most of the users, approximately $68.3\,\%$ of them, rated up to 10 films.
 
 ```{r users-ratings, fig.align= "center", fig.cap= "\\label{users-ratings}Histogram of the number of ratings. Approximatelly 68.3% of the users rated 10 films or less. The x-axis is in a log10 scale."}
 flixster %>%
@@ -843,7 +851,7 @@ We created a heatmap of users *versus* movies for a sample of 100 unique users (
 As expected, the user-movie matrix is sparse, being the majority of cells empty.
 Some films had more ratings than others, and some users were more active than others.
 
-```{r heatmap, fig.align= "center", fig.height= 4, fig.width= 4, fig.cap= "\\label{heatmap}Heatmap of user *vs* movie created from a sample of unique user IDs. The matrix is sparse, with several empty cells. Some movies present more ratings, and some users are more active."}
+```{r heatmap, fig.align= "center", fig.height= 6, fig.width= 6, fig.cap= "\\label{heatmap}Heatmap of user *vs* movie created from a sample of unique user IDs. The matrix is sparse, with several empty cells. Some movies present more ratings, and some users are more active."}
 users.samp= sample(unique(flixster$userid), 100)
 set.seed(42)
 flixster %>% filter(userid %in% users.samp) %>% 
@@ -857,6 +865,26 @@ flixster %>% filter(userid %in% users.samp) %>%
 abline(h= 0:100+0.5, v= 0:100+0.5, col= "grey")
 title("Heatmap of User x Movie")
 ```
+
+Table \@ref(tab:top10) highlights the top 10 of most active users, *i.e.*, the top 10 users with the most ratings.
+The most active user rated over $\num{30000}$ movies since December 2007, and the second most active user rated over $\num{24600}$ films since August 2007---these are two examples of users whose registration date in the platform (the `memberfor` variable) was posterior to the date of the first rating and, thus, that had to be corrected (see section \@ref(dates-memberfor)).
+The first woman appearing in this top 10 occupies the fifth position in the table with $\num{7356}$ ratings since July 2009.
+In terms of gender spread, this top 10 is perfectly balanced, with a 1-to-1 ratio of women to men.
+
+Table: (\#tab:top10) List of the top 10 active users, in terms of ratings..
+
+  |User ID |Gender |Age |Member for |Total number of ratings
+--|--------|-------|----|-----------|-----------------------
+1 |103006  |Male   |27  |2007-12-05 |30977
+2 |211247  |Male   |36  |2007-08-09 |24622
+3 |182127  |Male   |51  |2009-06-29 |9974
+4 |458966  |Male   |22  |2009-01-03 |9134
+5 |170822  |Female |63  |2009-07-14 |7356
+6 |13466   |Female |32  |2009-07-23 |6973
+7 |338577  |Female |41  |2008-09-15 |6148
+8 |733571  |Female |35  |2006-01-20 |5216
+9 |120742  |Male   |30  |2008-10-02 |5039
+10|41389   |Female |35  |2009-07-01 |5013
 
 The sample distribution of ratings per number of movies is represented by the histogram of fig. \@ref(fig:ratings-movies).
 As expected, most of the films received a low number of ratings---typically up to approximatelly 100 ratings.
@@ -873,7 +901,54 @@ flixster %>% group_by(movieid) %>%
   theme_bw()
 ```
 
+The top 10 most rated movies is presented in tab. \@ref(tab:top10-movies).
+The most rated film in Flixster was "Transformers: Revenge of the Fallen", with $\num{34791}$ ratings.
+"Shrek", an animated film, occupies the third position, with $\num{19916}$ classifications.
+
+Table: (\#tab:top10-movies) List of the top 10 most rated movies.
+
+  |Movie ID |Movie name                                         |Total number of ratings
+--|---------|---------------------------------------------------|--------
+1 |62530    |Transformers: Revenge of the Fallen                |34791
+2 |42237    |Pirates of the Caribbean: Dead Mans Chest          |22817
+3 |45119    |Shrek                                              |19916
+4 |39384    |Pirates of the Caribbean: At Worlds End            |19079
+5 |56915    |The Lord of the Rings - The Fellowship of the Ring |18381
+6 |56916    |The Lord of the Rings - The Two Towers             |17950
+7 |20644    |Harry Potter and the Prisoner of Azkaban           |17698
+8 |20645    |Harry Potter and the Philosopher's Stone           |17612
+9 |24251    |Harry Potter and the Chamber of Secrets            |17410
+10|26656    |Ice Age                                            |16487
+ 
 The histogram of ratings per date is plotted in fig. \@ref(fig:ratings-date).
+
+```{r ratings-year, fig.cap= "\\label{ratings-year}Histogram of ratings per year. The year with the most ratings was 2007, with over 2,500,000 ratings."}
+flixster %>%
+  mutate(year= year(date)) %>%
+  ggplot(aes(x= year)) +
+  geom_histogram(color= "white", binwidth= 1) + 
+  ggtitle("Rating distribution per year") +
+  xlab("Year") +
+  ylab("Number of ratings") +
+  theme_bw()
+```
+
+```{r ratings-month, fig.cap= "\\label{ratings-month}Histogram of ratings per month. The month with the overall most ratings was June, with over 700,000 ratings."}
+flixster %>%
+  mutate(month= month(date, label= T)) %>% 
+  mutate(year= year(date)) %>% 
+  ggplot(aes(x= month, fill= year)) +
+  geom_histogram(
+    stat= "count",
+    binwidth= 0.2,
+    color= "white",
+    position= "dodge"
+  ) + 
+  ggtitle("Rating distribution per month") +
+  xlab("Month") +
+  ylab("Number of ratings") +
+  theme_bw()
+```
 
 ```{r ratings-date, fig.cap= "\\label{ratings-date}Histogram of ratings per date. The x-axis is in a log10 scale. Most of the films received approximately up to 100 ratings."}
 flixster %>%
@@ -894,10 +969,10 @@ However, on the other hand, 2008 clearly does not follow that pattern.
 In 2009, the number of ratings increased steadily until June, but started to decline rapidly after that, until the end of the data set.
 
 Table \@ref(tab:dates-ratings) highlights the dates with more ratings.
-Some of the titles are well-known blockbusters.
+On the 15^{th} of April 2008, "Star Wars: episode IV -- A New Hope" became the film most rated on a single day in Flixster, with 418 ratings.
 
-Table: (\#tab:dates-ratings) List of film titles, sorted by date and by total number of ratings, in descending order..
-```{r dates-ratings}
+Table: (\#tab:dates-ratings) List of film titles, sorted by date and by total number of ratings, in descending order.
+```{r dates-ratings, eval= F}
 flixster %>%
   group_by(date, moviename) %>%
   summarise(count = n()) %>%
@@ -926,35 +1001,343 @@ data.rating %>%
 ```
 
 
+## Data preparation
+The data was further prepared for the recommender model.
+The process consisted of the five following steps:
 
-# Train/test split
-We split the data set in two parts, in a 7-to-3 ratio: the *train* set, containing $70\,\%$ of the data, and the *test* set, with the remainder $30\,\%$.
-The former was used to train the model, and we used the latter to simulate "fresh" data to evaluate the performance of the model.
+  1. Selection of relevant data;
+  1. Building of the recommendation model;
+  1. Normalisation of the data;
+  1. Binarisation of the data;
+  1. Train/test splitting of the data.
+
+### Selection of relevant data
+Due to time and mainly computer resources constraints, we decided to use a subset of the `flixster` tibble, which contained over eight million instances.
+The subset was created using two criteria to select the most relevant data: the most active users, and the most rated films.
+Initially, we considered users with 10 or more ratings, and films which had received classifications 100 or more times.
+However, when creating the model based on the user-based collaborative filtering (IBCF), **RStudio** would repeatidly consume all the RAM of our computers and shut down.
+Consequently, we increased the thresholds, so that users were classified as active if they had produced 50 or more ratings, and movies with less than 500 classifications were disregarded.
+We ended up with a table of $\num{4752926}$ rows.
+
+```{r eval= F}
+flixster.u50m500= flixster %>% 
+  filter(total.ratings.user > 50, total.ratings.movie > 500)
+
+save(flixster.u50m500, file= "../data/flixster.u50m500.rdata")
+```
+Such selection of data yielded a data set with $\num{34464}$ users and $\num{5292}$ films, corresponding to a reduction of approximately $9\,\%$ in the total number of instances.
+
+### Building of the recommendation model
+We followed two approaches in order to create the recommender model: using *binary* and *non-binary* information on the users' ratings.
+That came down to run two **R** instructions from the *recommenderlab* package:
 ```{r}
-tts.tiny= train_test_split(flixster.tiny, "rating", 0.7)
-x.train.tiny= tts.tiny$X_train
-y.train.tiny= tts.tiny$y_train
-x.test.tiny=  tts.tiny$X_test
-y.test.tiny=  tts.tiny$y_test
+# binary
+rec.mod.bin= recommenderRegistry$get_entries(
+  dataType= "binaryRatingMatrix"
+)
 
+# non-binary
+rec.mod= recommenderRegistry$get_entries(
+  dataType= "realRatingMatrix"
+)
+```
+
+We further instantiate the recommender rating matrices.
+```{r}
+load("../data/flixster.u50m500.rdata")
+FLIXST= flixster.u50m500
+
+ratingmat= dcast(
+  FLIXST,
+  userid ~ movieid,
+  value.var= "rating"
+  )
+
+ratingmat= as.matrix(ratingmat)
+```
+
+
+
+### Normalisation of the data
+Normalising the ratings matrix is very important when preparing the data for the recommender system, since it allows to remove the rating bias and, therefore, to account for those users who systematically grade movies with high or low ratings.
+We started to produce recommendations without normalising the data, that we planned to compare with simlar recommendations obtained with normalised rating matrices.
+However, we did not manage to run the code with the normalised data in the due time, so the results presented in the following section will contain only the recommendations obtained initially (*i.e.*, without normalisation).
+
+The normalisation of the ratings matrix would have consisted in applying the `normalize` function of the *recommenderlab* package, as is summarised in the following instruction:
+```{r}
+ratingmat= normalize(ratingmat)
+```
+
+
+### Binarisation of the data
+Using the "realRatingMatrix" class from the *recommenderlab* package, we created a real-valued rating matrix, from which we generated a binary version of the rating matrix, using the `binarize` instruction from the same package.
+Basically, `binarize` created a matrix belonging to the "binaryRatingMatrix" class by setting all ratings equal to or larger than 0.5 to 1, and all others to 0.
+```{r}
+# convert rating matrix to recommenderlab sparse matrix
+ratingmat= as(ratingmat, "realRatingMatrix")
+
+# create binary rating matrix
+ratingmat.bin= binarize(ratingmat, minRating= 0.5)
+ntop= 10 # number of top movies to recommend to each user
+```
+
+
+### Train/test splitting of the data
+We split the data set into two pieces, in a 7-to-3 ratio: the *train* set, containing $70\,\%$ of the data, and the *test* set, with the remainder $30\,\%$.
+The former was used to train the models, while the latter was used to simulate "fresh" data to evaluate the performance of the models.
+
+Both the training and the testing sets were generated from the rating matrices, so we ended up with four sets: one train-test pair for the binary approach, and another train-test pair for the no-binary approach.
+The split resulted in *recomenderlab*'s structures of class "binaryRatingMatrix" (binary case) and class "realRatingMatrix" (no binary case).
+The train sets consisted of $\num{12122} \times \num{2540}$ matrices with $\{3335518}$ ratings, and the test sets to $\num{5210} \times \num{2540}$ rating matrices with $\{1434740}$ ratings.
+```{r}
 set.seed(42)
-x.train= sample_n(x.train.tiny, 100)
-y.train= sample_n(y.train.tiny, 100)
-x.test= sample_n(x.test.tiny, 30)
-y.test= sample_n(y.test.tiny, 30)
+idx_train_test= sample(
+  c(TRUE, FALSE),
+  size= nrow(ratingmat),
+  replace= T,
+  prob= c(0.7, 0.3)
+)
+
+train.nobin= ratingmat[  idx_train_test, ]
+test.nobin=  ratingmat[! idx_train_test, ]
+
+train.bin= ratingmat.bin[  idx_train_test, ]
+test.bin=  ratingmat.bin[! idx_train_test, ]
 ```
 The split resulted in a train set with $\num{4291942}$ rows, and a test set with $\num{1839404}$ rows.
 
-The *target* variable, *i.e.*, the one we want to predict, is `rating`.
-So, it was removed from both the train and test sets, and saved in corresponding separate tibbles.
+
+# Recommendation engines
+The goal of this section was to implement systems that would deliver relevant results, *i.e*, effective recommendations to Flixster's users.
+
+Three recommender methods were applied to both the binary and non-binary approacles: *item-based collaborative filterint* (IBCF), *user-based collaborative filtering* (UBCF), and *popular*.
+
+The IBCF and UBCF methods take into account the information about the users and the inherent collaboration between them to obtain recommendations of items.
+While in the former, the recommendations are based on the similarity between items, in the latter the recommendationa are performed on a neighborhood of users that share similar tastes.
+The popular method simply recommends the most popular films, based on the number of ratings they have received.
+
+In the following sections, we will present the code implemented for all of those methods applied in both the binary and non-binary cases, and the outputs of their application on the recommendation of 10 films to the first user of the `flixster.u50m500` table.
+
+
+## Binary approach
+### IBCF
+```{r eval= F}
+rec.mod.bin$IBCF_binaryRatingMatrix$parameters
+rec.mod.ibcf.bin= Recommender(data= train.bin, method= "IBCF")
+rec.mod.ibcf.bin.pred= predict(
+  object= rec.mod.ibcf.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ibcf.bin.user.1= rec.mod.ibcf.bin.pred@items[[1]]
+movies.ibcf.bin.user.1= rec.mod.ibcf.bin.pred@itemLabels[rec.ibcf.bin.user.1]
+movies.rec.ibcf.bin= movies.ibcf.bin.user.1
+for (i in 1:ntop) {
+  movies.rec.ibcf.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ibcf.bin.user.1[i])$moviename
+    )
+}
+movies.rec.ibcf.bin
+save(movies.rec.ibcf.bin, file= "../data/movies.rec.ibcf.bin.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.ibcf.bin.rdata")
+```
+
+The recommendations obtained for the first user are presented in tab. \@ref(tab:ibcf-bin).
+
+
+### UBCF
+```{r eval= F}
+rec.mod.bin$UBCF_binaryRatingMatrix$parameters
+rec.mod.ubcf.bin= Recommender(data= train.bin, method= "UBCF")
+rec.mod.ubcf.bin.pred= predict(
+  object= rec.mod.ubcf.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ubcf.bin.user.1= rec.mod.ubcf.bin.pred@items[[1]]
+movies.ubcf.bin.user.1= rec.mod.ubcf.bin.pred@itemLabels[rec.ubcf.bin.user.1]
+movies.rec.ubcf.bin= movies.ubcf.bin.user.1
+for (i in 1:ntop) {
+  movies.rec.ubcf.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ubcf.bin.user.1[i])$moviename
+    )
+}
+movies.rec.ubcf.bin
+save(movies.rec.ubcf.bin, file= "../data/movies.rec.ubcf.bin.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.ubcf.bin.rdata")
+```
+
+The ten recommended movies are indicated in tab. \@ref(tab:ubcf-bin).
+
+
+## Popular
+```{r eval= F}
+rec.mod.bin$POPULAR_binaryRatingMatrix$parameters
+rec.mod.pop.bin= Recommender(data= train.bin, method= "POPULAR")
+rec.mod.pop.bin.pred= predict(
+  object= rec.mod.pop.bin,
+  newdata= test.bin,
+  n= ntop
+)
+
+# recommendations for the first user:
+rec.pop.bin.user.1= rec.mod.pop.bin.pred@items[[1]]
+movies.pop.bin.user.1= rec.mod.pop.bin.pred@itemLabels[rec.pop.bin.user.1]
+movies.rec.pop.bin= movies.pop.bin.user.1
+for (i in 1:ntop){
+  movies.rec.pop.bin[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.pop.bin.user.1[i])$moviename
+    )
+}
+movies.rec.pop.bin
+save(movies.rec.pop.bin, file= "../data/movies.rec.pop.bin.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.pop.bin.rdata")
+```
+
+The ten movies recommended for the first user by this method are compiled in tab. \@ref(tab:pop-bin).
+
+
+## Non-binary
+### IBCF
+```{r eval= F}
+rec.mod$IBCF_realRatingMatrix$parameters
+rec.mod.ibcf= Recommender(data= train.nobin, method= "IBCF")
+rec.mod.ibcf.pred= predict(
+  object= rec.mod.ibcf,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recomendations for the first user
+rec.ibcf.user.1= rec.mod.ibcf.pred@items[[1]]
+movies.ibcf.user.1= rec.mod.ibcf.pred@itemLabels[rec.ibcf.user.1]
+movies.rec.ibcf= movies.ibcf.user.1
+for (i in 1:ntop) {
+  movies.rec.ibcf[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ibcf.user.1[i])$moviename
+    )
+}
+movies.rec.ibcf
+save(movies.rec.ibcf, file= "../data/movies.rec.ibcf.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.ibcf.rdata")
+```
+
+The films recommended for the first user are indicated in tab. \@ref(tab:ibcf-non-bin).
+
+
+### UBCF
+```{r eval= F}
+rec.mod$UBCF_realRatingMatrix$parameters
+rec.mod.ubcf= Recommender(data= train.nobin, method= "UBCF")
+rec.mod.ubcf.pred= predict(
+  object= rec.mod.ubcf,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recommendations for the first user
+rec.ubcf.user.1= rec.mod.ubcf.pred@items[[1]]
+movies.ubcf.user.1= rec.mod.ubcf.pred@itemLabels[rec.ubcf.user.1]
+movies.rec.ubcf= movies.ubcf.user.1
+for (i in 1:ntop) {
+  movies.rec.ubcf[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.ubcf.user.1[i])$moviename
+    )
+}
+movies.rec.ubcf
+save(movies.rec.ubcf, file= "../data/movies.rec.ubcf.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.ubcf.rdata")
+```
+
+The table with the recommendations for the first user in the `flixster.u50m500` tibble are presented in tab. \@ref(tab:ubcf-non-bin).
+
+
+### Popular
+```{r eval= F}
+rec.mod$POPULAR_realRatingMatrix$parameters
+rec.mod.pop= Recommender(data= train.nobin, method= "POPULAR")
+rec.mod.pop.pred= predict(
+  object= rec.mod.pop,
+  newdata= test.nobin,
+  n= ntop
+)
+
+# recommendations for the first user:
+rec.pop.user.1= rec.mod.pop.pred@items[[1]]
+movies.pop.user.1= rec.mod.pop.pred@itemLabels[rec.pop.user.1]
+movies.rec.pop= movies.pop.user.1
+for (i in 1:ntop){
+  movies.rec.pop[i]= as.character(
+    subset(
+      FLIXST,
+      FLIXST$movieid == movies.pop.user.1[i])$moviename
+    )
+}
+movies.rec.pop
+save(movies.rec.pop, file= "../data/movies.rec.pop.rdata")
+```
+
+```{r echo= F}
+load("../data/movies.rec.pop.rdata")
+```
+
+Finally, the movies recommendations for the first user of the data set are compiled in tab. \@ref(tab:pop-non-bin).
 
 
 
+At the end, all models were saved for futre reference.
+```{r eval= F}
+# binary case
+save(
+  rec.mod.bin,
+  ratingmat.bin,
+  train.bin, test.bin,
+  rec.mod.ibcf.bin, rec.mod.ibcf.bin.pred, movies.rec.ibcf.bin,
+  rec.mod.ubcf.bin, rec.mod.ubcf.bin.pred, movies.rec.ubcf.bin,
+  rec.mod.pop.bin, rec.mod.pop.bin.pred, movies.rec.pop.bin,
+  file= "../data/recommender-system-binary.rdata"
+)
 
-
-
-
-
+# non-binary case
+save(
+  rec.mod,
+  ratingmat,
+  train.nobin, test.nobin,
+  rec.mod.ibcf, rec.mod.ibcf.pred, movies.rec.ibcf,
+  rec.mod.ubcf, rec.mod.ubcf.pred, movies.rec.ubcf,
+  rec.mod.pop, rec.mod.pop.pred, movies.rec.pop,
+  file= "../data/recommender-system-no-binary.rdata"
+)
+```
 
 
 
