@@ -965,6 +965,315 @@ save(
 )
 
 
+# compare models ----------------------------------------------------------
+models= list(
+  ibcf= list(name= "IBCF"),
+  ubcf= list(name= "UBCF"),
+  pop= list(name= "Popular")
+)
+
+TOP.N= c(1, 2, 5, seq(10, 100, 10)) # top N recommendations
+ITEMS= 1 # number of films to generate recommendations
+RAT.THRESH= 3 # minimum rating to be considered a good option
+N.FOLDS= 4 # number of folds/samples to run evaluation to (for the CV)
+
+## select most relevant data
+ratings.bin= ratingmat.bin[
+  rowCounts(ratingmat.bin) > 50,
+  colCounts(ratingmat.bin) > 500
+]
+
+ratings.nobin= ratingmat[
+  rowCounts(ratingmat) > 50,
+  colCounts(ratingmat) > 500
+]
+
+
+# compare binary models ---------------------------------------------------
+eval.bin= evaluationScheme(data= ratings.bin,
+                           method= "cross-validation",
+                           k= N.FOLDS,
+                           given= ITEMS,
+                           goodRating= RAT.THRESH)
+
+results.bin= evaluate(x= eval.bin,
+                      method= models,
+                      n= TOP.N )
+results.bin
+
+evals.bin.size= sapply(eval.bin@runsTrain, length)
+
+# training data for the runs
+eval.bin.train= getData(eval.bin, "train")
+
+# known ratins used for prediction for test data
+eval.bin.known= getData(eval.bin, "known")
+
+# ratings used for evaluation for test data
+eval.bin.unknown= getData(eval.bin, "unknown")
+
+eval.bin.train.df= data.frame(x= rowCounts(eval.bin.train), type= "train")
+eval.bin.known.df= data.frame(x= rowCounts(eval.bin.known), type= "known")
+eval.bin.unknown.df= data.frame(x= rowCounts(eval.bin.unknown), type= "unknown")
+
+evals.bin.all= rbind(
+  eval.bin.train.df,
+  eval.bin.known.df,
+  eval.bin.unknown.df
+)
+evals.bin= rbind(
+  eval.bin.train.df,
+  eval.bin.unknown.df
+)
+
+ggplot(
+  evals.bin,
+  aes(x= x, fill= type)
+) +
+  geom_histogram(
+    binwidth= 20,
+    alpha= 0.5
+  ) +
+  labs(
+    x= "Number of ratings per row",
+    y= "Count",
+    title= "Data used for the runs"
+  ) +
+  theme_bw()
+
+
+# confusion matrices
+cm.ibcf.bin= getConfusionMatrix(results.bin$ibcf)
+cm.ubcf.bin= getConfusionMatrix(results.bin$ubcf)
+cm.pop.bin=  getConfusionMatrix(results.bin$pop)
+
+# condense results of all folds
+columns.to.sum= c("TP", "FP", "FN", "TN", "precision", "recall", "TPR", "FPR")
+cm.sum.ibcf.bin= Reduce(
+  "+",
+  getConfusionMatrix(results.bin$ibcf)
+)[, columns.to.sum]
+cm.sum.ubcf.bin= Reduce(
+  "+",
+  getConfusionMatrix(results.bin$ubcf)
+)[, columns.to.sum]
+cm.sum.pop.bin= Reduce(
+  "+",
+  getConfusionMatrix(results.bin$pop)
+)[, columns.to.sum]
+
+
+plot(
+  results.bin,
+  lw= 3,
+  annotate= T,
+  legend= "topleft",
+  main= "ROC curve"
+)
+
+plot(
+  results.bin,
+  lw= 3,
+  annotate= T,
+  "prec/rec",
+  legend= "topright",
+  main= "Precision-Recall"
+)
+
+#cmARbin = getConfusionMatrix(results.binary$AR)
+
+eval.rec.bin= Recommender(
+  data= eval.bin.train,
+  method= "IBCF",
+  parameter= NULL
+)
+
+ITEMS.REC= 10
+
+eval.pred.bin= predict(
+  object= eval.rec.bin,
+  newdata= eval.bin.known,
+  n= ITEMS.REC,
+  type= "ratings"
+)
+
+# distribution of ratings per user in the matrix of predictions
+ggplot(data.frame(x= rowCounts(eval.pred.bin))) +
+  geom_histogram(
+    aes(x),
+    bins= 20
+  ) +
+  labs(
+    x= "Number of ratings per row",
+    y= "Count",
+    title= "Distribution of ratings per user"
+  )
+
+### THIS YIELDS AN ERROR, WHICH I CANNOT DEBUG.
+eval.accu= calcPredictionAccuracy(
+  x= eval.pred.bin,
+  data= eval.bin.unknown,
+  byUser= F
+)
+### THIS YIELDS AN ERROR, WHICH I CANNOT DEBUG.
+
+save(
+  eval.bin,
+  results.bin,
+  eval.bin.train, eval.bin.known, eval.bin.unknown,
+  eval.rec.bin, eval.pred.bin,
+  file= "../data/evals.binary.rdata"
+)
+
+
+
+# compare non-binary models -----------------------------------------------
+eval.nobin= evaluationScheme(data= ratings.nobin,
+                             method= "cross-validation",
+                             k= N.FOLDS,
+                             given= ITEMS,
+                             goodRating= RAT.THRESH)
+
+results.nobin= evaluate(x= eval.nobin,
+                        method= models,
+                        n= TOP.N )
+results.nobin
+
+evals.nobin.size= sapply(eval.nobin@runsTrain, length)
+
+# training data for the runs
+eval.nobin.train= getData(eval.nobin, "train")
+
+# known ratins used for prediction for test data
+eval.nobin.known= getData(eval.nobin, "known")
+
+# ratings used for evaluation for test data
+eval.nobin.unknown= getData(eval.nobin, "unknown")
+
+eval.nobin.train.df= data.frame(
+  x= rowCounts(eval.nobin.train),
+  type= "train"
+)
+eval.nobin.known.df= data.frame(
+  x= rowCounts(eval.nobin.known),
+  type= "known"
+)
+eval.nobin.unknown.df= data.frame(
+  x= rowCounts(eval.nobin.unknown),
+  type= "unknown"
+)
+
+evals.nobin.all= rbind(
+  eval.nobin.train.df,
+  eval.nobin.known.df,
+  eval.nobin.unknown.df
+)
+evals.nobin= rbind(
+  eval.nobin.train.df,
+  eval.nobin.unknown.df
+)
+
+ggplot(
+  evals.nobin,
+  aes(x= x, fill= type)
+) +
+  geom_histogram(
+    binwidth= 20,
+    alpha= 0.5
+  ) +
+  labs(
+    x= "Number of ratings per row",
+    y= "Count",
+    title= "Data used for the runs"
+  ) +
+  theme_bw()
+
+
+# confusion matrices
+cm.ibcf.nobin= getConfusionMatrix(results.nobin$ibcf)
+cm.ubcf.nobin= getConfusionMatrix(results.nobin$ubcf)
+cm.pop.nobin=  getConfusionMatrix(results.nobin$pop)
+
+# condense results of all folds
+columns.to.sum= c("TP", "FP", "FN", "TN", "precision", "recall", "TPR", "FPR")
+cm.sum.ibcf.nobin= Reduce(
+  "+",
+  getConfusionMatrix(results.nobin$ibcf)
+)[, columns.to.sum]
+cm.sum.ubcf.nobin= Reduce(
+  "+",
+  getConfusionMatrix(results.nobin$ubcf)
+)[, columns.to.sum]
+cm.sum.pop.nobin= Reduce(
+  "+",
+  getConfusionMatrix(results.nobin$pop)
+)[, columns.to.sum]
+
+
+plot(
+  results.nobin,
+  lwd= 3,
+  annotate= T,
+  legend= "topleft",
+  main= "ROC curve"
+)
+
+plot(
+  results.nobin$pop,
+  col= "green",
+  lwd= 3,
+  annotate= T,
+  "prec/rec",
+  #legend= "topright",
+  main= "Precision-Recall"
+)
+
+#cmARbin = getConfusionMatrix(results.binary$AR)
+
+eval.rec.nobin= Recommender(
+  data= eval.nobin.train,
+  method= "IBCF",
+  parameter= NULL
+)
+
+ITEMS.REC= 10
+
+eval.pred.nobin= predict(
+  object= eval.rec.nobin,
+  newdata= eval.nobin.known,
+  n= ITEMS.REC,
+  type= "ratings"
+)
+
+# distribution of ratings per user in the matrix of predictions
+ggplot(data.frame(x= rowCounts(eval.pred.nobin))) +
+  geom_histogram(
+    aes(x),
+    bins= 20
+  ) +
+  labs(
+    x= "Number of ratings per row",
+    y= "Count",
+    title= "Distribution of ratings per user"
+  )
+
+### THIS YIELDS ONLY NaNs
+eval.accu.nobin= calcPredictionAccuracy(
+  x= eval.pred.nobin,
+  data= eval.nobin.unknown,
+  byUser= F
+)
+### THIS YIELDS ONLY NaNs
+
+
+
+
+
+
+
+
+
+
 
 # TESTING (to remove) -----------------------------------------------------
 # ```{r}
